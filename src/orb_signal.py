@@ -327,7 +327,10 @@ def simulate_trade(
     Walks forward through bars after entry to determine if target or stop hit first.
     Returns trade result dict.
     """
-    post_entry = intraday_bars[intraday_bars.index >= pd.Timestamp(signal.timestamp)]
+    # Cap the walk at the force-close time: the live bot flattens at 15:45, so
+    # giving backtest trades until ~16:00 to hit target/stop overstates results.
+    day = intraday_bars.between_time("09:30", settings.FORCE_CLOSE_TIME)
+    post_entry = day[day.index >= pd.Timestamp(signal.timestamp)]
 
     for idx, row in post_entry.iterrows():
         if signal.direction == "long":

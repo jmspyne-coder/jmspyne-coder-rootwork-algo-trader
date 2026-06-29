@@ -3,7 +3,10 @@ Rootwork Algo Trader — Configuration
 All tunable parameters in one place. Modify here, not in strategy code.
 
 ACTIVE CONFIG: SPY / 5m ORB / ATR 1.5x stop / 0.3% min range / 2:1 R:R
-Backtest results (2024-2026): 60 trades, 65% win rate, Sharpe 2.58, 2.9% MDD
+              + candle-strength filter (top 50%); VWAP/RVOL off (see below).
+Backtest 2024-2026, net of costs, faithful 15:45 force-close:
+  SPY  net Sharpe 2.67 / +5.4% (46 trades)
+  QQQ  net Sharpe 3.82 / +27.4% (166 trades; validated, not yet live-traded)
 """
 import os
 from dotenv import load_dotenv
