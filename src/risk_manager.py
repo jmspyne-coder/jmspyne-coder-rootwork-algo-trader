@@ -4,10 +4,9 @@ Risk Management Module.
 Enforces all risk controls before and during trading.
 This is the module that keeps you from blowing up.
 """
-import json
-import os
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from datetime import datetime
+import pytz
 from config import settings
 from src.costs import round_trip_cost_per_share
 
@@ -37,36 +36,99 @@ class RiskState:
         return -self.daily_pnl / self.daily_starting_equity if self.daily_pnl < 0 else 0
 
 
-STATE_FILE = os.path.join(
-    os.path.dirname(__file__), "..", "config", "risk_state.json"
-)
+def _mode() -> str:
+    return "paper" if settings.ALPACA_PAPER else "live"
 
 
-def load_risk_state(equity: float | None = None) -> RiskState:
-    """Load persisted risk state or initialize fresh."""
-    if os.path.exists(STATE_FILE):
-        with open(STATE_FILE, "r") as f:
-            data = json.load(f)
-            return RiskState(**data)
+def _today_et() -> str:
+    return datetime.now(pytz.timezone("US/Eastern")).date().isoformat()
 
-    eq = equity or 10000.0
+
+def compute_history_state(history: list[dict]) -> tuple[float, int]:
+    """Derive cross-day risk quantities from closed-day history (oldest first).
+
+    Returns (peak_equity, consecutive_losing_days):
+    - peak_equity: the highest end-of-day equity ever recorded.
+    - consecutive_losing_days: the trailing run of days with negative P&L.
+
+    A flat or winning day (pnl >= 0) breaks the streak. This is what kills
+    the old deadlock: after a consecutive-loss halt, the halted day trades
+    nothing, lands flat, and the streak resets, so the halt is a one-day
+    cooldown rather than a permanent lock.
+    """
+    peak = 0.0
+    for h in history:
+        eq = h.get("equity_end")
+        if eq is not None and eq > peak:
+            peak = eq
+    consec = 0
+    for h in reversed(history):
+        pnl = h.get("daily_pnl")
+        if pnl is not None and pnl < 0:
+            consec += 1
+        else:
+            break
+    return peak, consec
+
+
+def load_risk_state(equity: float | None = None, mode: str | None = None) -> RiskState:
+    """Reconstruct risk state from MotherDuck (the system of record).
+
+    Cross-day quantities (peak equity, consecutive losing days) are derived
+    from algo_daily_summary; intraday counters (daily P&L, trades today,
+    halt flags) come from the cached algo_risk_state row when it is today's.
+
+    FAIL CLOSED: if MotherDuck cannot be reached, return a halted state. A
+    risk controller that cannot read its own state must not trade.
+    """
+    mode = mode or _mode()
+    eq = equity or 0.0
+    try:
+        from src.trade_logger import fetch_daily_history, read_risk_cache
+        history = fetch_daily_history(mode)
+        cache = read_risk_cache(mode)
+    except Exception as e:
+        print(f"  [risk] MotherDuck unavailable — FAILING CLOSED (no trading): {e}")
+        return RiskState(
+            peak_equity=eq, current_equity=eq, daily_starting_equity=eq,
+            daily_pnl=0.0, consecutive_losses=0, trades_today=0,
+            is_halted=True, halt_reason="risk_state_unavailable",
+        )
+
+    peak_hist, consec = compute_history_state(history)
+    peak_equity = max(peak_hist, eq)
+
+    today = _today_et()
+    if cache and str(cache.get("as_of_date")) == today:
+        daily_starting = cache["daily_starting_equity"] or eq
+        daily_pnl = cache["daily_pnl"] or 0.0
+        trades_today = cache["trades_today"] or 0
+        is_halted = bool(cache["is_halted"])
+        halt_reason = cache["halt_reason"]
+    else:
+        daily_starting, daily_pnl, trades_today = eq, 0.0, 0
+        is_halted, halt_reason = False, None
+
     return RiskState(
-        peak_equity=eq,
+        peak_equity=peak_equity,
         current_equity=eq,
-        daily_starting_equity=eq,
-        daily_pnl=0.0,
-        consecutive_losses=0,
-        trades_today=0,
-        is_halted=False,
-        halt_reason=None,
+        daily_starting_equity=daily_starting,
+        daily_pnl=daily_pnl,
+        consecutive_losses=consec,
+        trades_today=trades_today,
+        is_halted=is_halted,
+        halt_reason=halt_reason,
     )
 
 
-def save_risk_state(state: RiskState):
-    """Persist risk state between runs."""
-    os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
-    with open(STATE_FILE, "w") as f:
-        json.dump(asdict(state), f, indent=2)
+def save_risk_state(state: RiskState, mode: str | None = None) -> None:
+    """Persist the risk-state cache to MotherDuck. Best-effort: the canonical
+    state is re-derived on load, so a cache write failure is non-fatal."""
+    try:
+        from src.trade_logger import write_risk_cache
+        write_risk_cache(mode or _mode(), _today_et(), state)
+    except Exception as e:
+        print(f"  [risk] could not persist risk-state cache (non-fatal): {e}")
 
 
 def reset_daily_state(state: RiskState, current_equity: float) -> RiskState:

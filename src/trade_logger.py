@@ -67,9 +67,78 @@ def init_tables():
             created_at            TIMESTAMP DEFAULT now()
         );
     """)
+    con.execute(RISK_STATE_DDL)
     con.close()
     # Bring a pre-existing v1 algo_trade_log up to the v2 schema (idempotent).
     migrate_tables()
+
+
+# Durable risk-state cache. The canonical cross-day quantities (peak equity,
+# consecutive losing days) are DERIVED from algo_daily_summary on each run;
+# this single-row-per-mode table caches the full state for fast reads and
+# auditing. See src/risk_manager.load_risk_state.
+RISK_STATE_DDL = """
+    CREATE TABLE IF NOT EXISTS algo_risk_state (
+        mode                  VARCHAR PRIMARY KEY,   -- 'paper' or 'live'
+        as_of_date            DATE,
+        peak_equity           DOUBLE,
+        current_equity        DOUBLE,
+        daily_starting_equity DOUBLE,
+        daily_pnl             DOUBLE,
+        consecutive_losses    INTEGER,
+        trades_today          INTEGER,
+        is_halted             BOOLEAN,
+        halt_reason           VARCHAR,
+        updated_at            TIMESTAMP DEFAULT now()
+    );
+"""
+
+
+def fetch_daily_history(mode: str) -> list[dict]:
+    """Closed-day history for a mode, oldest first. Source of truth for the
+    derived cross-day risk quantities (peak equity, consecutive losing days)."""
+    con = get_connection()
+    rows = con.execute(
+        "SELECT summary_date, daily_pnl, equity_end FROM algo_daily_summary "
+        "WHERE mode = ? ORDER BY summary_date",
+        [mode],
+    ).fetchall()
+    con.close()
+    return [{"summary_date": r[0], "daily_pnl": r[1], "equity_end": r[2]} for r in rows]
+
+
+def read_risk_cache(mode: str) -> dict | None:
+    """Read the cached risk-state row for a mode, or None if absent."""
+    con = get_connection()
+    con.execute(RISK_STATE_DDL)
+    row = con.execute(
+        "SELECT mode, as_of_date, peak_equity, current_equity, daily_starting_equity, "
+        "daily_pnl, consecutive_losses, trades_today, is_halted, halt_reason "
+        "FROM algo_risk_state WHERE mode = ?",
+        [mode],
+    ).fetchone()
+    con.close()
+    if not row:
+        return None
+    keys = ["mode", "as_of_date", "peak_equity", "current_equity", "daily_starting_equity",
+            "daily_pnl", "consecutive_losses", "trades_today", "is_halted", "halt_reason"]
+    return dict(zip(keys, row))
+
+
+def write_risk_cache(mode: str, as_of_date: str, state) -> None:
+    """Upsert the cached risk-state row for a mode."""
+    con = get_connection()
+    con.execute(RISK_STATE_DDL)
+    con.execute(
+        "INSERT OR REPLACE INTO algo_risk_state (mode, as_of_date, peak_equity, "
+        "current_equity, daily_starting_equity, daily_pnl, consecutive_losses, "
+        "trades_today, is_halted, halt_reason, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now())",
+        [mode, as_of_date, state.peak_equity, state.current_equity,
+         state.daily_starting_equity, state.daily_pnl, state.consecutive_losses,
+         state.trades_today, state.is_halted, state.halt_reason],
+    )
+    con.close()
 
 
 def migrate_tables():
