@@ -5,7 +5,7 @@ End of Day Cleanup — Runs at 3:45 PM ET via GitHub Actions.
 2. Calculate daily P&L
 3. Update risk state
 4. Log to MotherDuck
-5. Send daily summary notification
+5. Send daily summary email + Slack notification
 """
 import sys
 from datetime import datetime
@@ -17,7 +17,9 @@ from src.alpaca_client import (
 )
 from src.risk_manager import load_risk_state, record_trade_result, save_risk_state
 from src.trade_logger import log_daily_summary, init_tables
-from src.notifications import notify_daily_summary, notify_trade_exit
+from src.notifications import (
+    notify_daily_summary, notify_trade_exit, send_daily_email,
+)
 from config import settings
 
 
@@ -31,11 +33,17 @@ def main():
 
     # 1. Check for open positions and force-close
     positions = get_open_positions(trading_client)
+    positions_data = []
     if positions:
         print(f"  Open positions: {len(positions)} — force closing...")
         for pos in positions:
             pnl = float(pos.unrealized_pl)
             print(f"    {pos.symbol}: {pos.qty} shares, unrealized P&L: ${pnl:+,.2f}")
+            positions_data.append({
+                "symbol": pos.symbol,
+                "qty": str(pos.qty),
+                "unrealized_pl": pnl,
+            })
             notify_trade_exit(
                 pos.symbol,
                 "long" if int(pos.qty) > 0 else "short",
@@ -62,7 +70,6 @@ def main():
     # Count today's trades
     todays_orders = get_todays_orders(trading_client)
     filled_count = len([o for o in todays_orders if hasattr(o, 'filled_qty') and o.filled_qty])
-    # Rough win/loss from P&L direction (detailed logging happens per-trade)
     wins = 1 if daily_pnl > 0 else 0
     losses = 1 if daily_pnl < 0 else 0
 
@@ -92,7 +99,7 @@ def main():
     except Exception as e:
         print(f"  MotherDuck logging error: {e}")
 
-    # 5. Notify
+    # 5. Slack notification
     notify_daily_summary(
         today_str,
         filled_count,
@@ -101,6 +108,23 @@ def main():
         daily_pnl,
         equity,
         drawdown,
+    )
+
+    # 6. Daily email
+    send_daily_email(
+        date=today_str,
+        ticker=settings.TICKER,
+        trades_taken=filled_count,
+        wins=wins,
+        losses=losses,
+        daily_pnl=round(daily_pnl, 2),
+        equity_start=state.daily_starting_equity,
+        equity_end=equity,
+        drawdown_pct=drawdown,
+        positions_closed=positions_data,
+        was_halted=state.is_halted,
+        halt_reason=state.halt_reason,
+        mode="paper" if settings.ALPACA_PAPER else "live",
     )
 
     print(f"  Daily P&L: ${daily_pnl:+,.2f}")
