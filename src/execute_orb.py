@@ -80,6 +80,13 @@ def trade_symbol(ticker, equity, capital_cap, data_client, trading_client, today
           f"stop ${signal.stop_price:.2f} | tgt ${signal.target_price:.2f} | "
           f"notional ${shares * signal.entry_price:,.0f}")
 
+    # Dry run: prove the full path without touching the account or the data.
+    if settings.DRY_RUN:
+        print(f"  [{ticker}] DRY RUN — would {'BUY' if signal.direction == 'long' else 'SELL'} "
+              f"{shares} sh; stop ${signal.stop_price:.2f} tgt ${signal.target_price:.2f}. "
+              f"No order placed, nothing logged.")
+        return 0
+
     # Submit bracket order.
     try:
         order = submit_bracket_order(

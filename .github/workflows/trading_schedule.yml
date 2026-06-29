@@ -23,6 +23,11 @@ on:
           - end_of_day
           - backtest
           - param_sweep
+      dry_run:
+        description: 'Dry run (execute_orb only): run the full path but place NO orders'
+        required: false
+        type: boolean
+        default: false
 
 env:
   ALPACA_API_KEY_ID: ${{ secrets.ALPACA_API_KEY_ID }}
@@ -32,6 +37,7 @@ env:
   ALPACA_PAPER: 'true'
   ALGO_TICKER: 'SPY'          # single-symbol default (backtest/manual)
   ALGO_TICKERS: 'SPY,QQQ'     # live trading set (execute/pre/EOD loop over these)
+  DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}  # true only on a manual dry-run dispatch
   GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
   GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
 

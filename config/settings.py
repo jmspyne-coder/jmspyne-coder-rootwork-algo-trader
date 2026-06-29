@@ -35,6 +35,10 @@ TICKER = os.getenv("ALGO_TICKER", "SPY")  # single-symbol default (backtest/anal
 # small-caps). The live entrypoints loop over these; backtest/analysis tools
 # still take a single --ticker.
 TICKERS = [t.strip() for t in os.getenv("ALGO_TICKERS", "SPY,QQQ").split(",") if t.strip()]
+
+# Dry run: when true, execute_orb runs the full path (auth, data fetch, signal,
+# sizing) but places NO order and logs nothing. For safe live pressure-testing.
+DRY_RUN = os.getenv("DRY_RUN", "false").lower() == "true"
 OPENING_RANGE_MINUTES = int(os.getenv("ALGO_ORB_MINUTES", "5"))
 REWARD_RISK_RATIO = float(os.getenv("ALGO_RR_RATIO", "2.0"))
 STOP_MODE = os.getenv("ALGO_STOP_MODE", "atr")
