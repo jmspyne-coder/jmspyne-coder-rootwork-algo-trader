@@ -27,6 +27,11 @@ def run_backtest(
     or_minutes: int = None,
     rr_ratio: float = None,
     stop_mode: str = None,
+    filter_vwap: bool = None,
+    filter_rvol: bool = None,
+    rvol_threshold: float = None,
+    filter_candle: bool = None,
+    candle_pct: float = None,
 ) -> dict:
     """
     Full backtest pipeline:
@@ -35,6 +40,10 @@ def run_backtest(
     3. Simulate trades
     4. Apply risk controls
     5. Return performance summary
+
+    Filter args (filter_vwap/filter_rvol/filter_candle and their params) are
+    passed straight through to generate_signal(); None means "use config
+    default". Set all three to False to reproduce v1 (baseline) behavior.
     """
     initial_capital = initial_capital or settings.BACKTEST_INITIAL_CAPITAL
     or_minutes = or_minutes or settings.OPENING_RANGE_MINUTES
@@ -43,6 +52,7 @@ def run_backtest(
 
     print(f"Backtesting {ticker} from {start} to {end}")
     print(f"  ORB window: {or_minutes} min | R:R = {rr_ratio} | Stop: {stop_mode}")
+    print(f"  Filters: vwap={filter_vwap} rvol={filter_rvol} candle={filter_candle}")
     print(f"  Initial capital: ${initial_capital:,.0f}")
     print(f"  Fetching data from Alpaca...")
 
@@ -83,6 +93,11 @@ def run_backtest(
             or_minutes=or_minutes,
             rr_ratio=rr_ratio,
             stop_mode=stop_mode,
+            filter_vwap=filter_vwap,
+            filter_rvol=filter_rvol,
+            rvol_threshold=rvol_threshold,
+            filter_candle=filter_candle,
+            candle_pct=candle_pct,
         )
         if signal is None:
             continue
@@ -112,6 +127,11 @@ def run_backtest(
         "rr_ratio": rr_ratio,
         "stop_mode": stop_mode,
         "initial_capital": initial_capital,
+        "filter_vwap": filter_vwap,
+        "filter_rvol": filter_rvol,
+        "rvol_threshold": rvol_threshold,
+        "filter_candle": filter_candle,
+        "candle_pct": candle_pct,
     }
     summary["trades"] = executed_trades
 
@@ -210,6 +230,15 @@ def main():
     parser.add_argument("--or-minutes", type=int, default=settings.OPENING_RANGE_MINUTES)
     parser.add_argument("--rr-ratio", type=float, default=settings.REWARD_RISK_RATIO)
     parser.add_argument("--stop-mode", default=settings.STOP_MODE)
+    # Filter toggles: --vwap/--no-vwap etc. Omit to use config defaults.
+    parser.add_argument("--vwap", action=argparse.BooleanOptionalAction, default=None,
+                        help="enable/disable VWAP filter (default: config)")
+    parser.add_argument("--rvol", action=argparse.BooleanOptionalAction, default=None,
+                        help="enable/disable RVOL filter (default: config)")
+    parser.add_argument("--candle", action=argparse.BooleanOptionalAction, default=None,
+                        help="enable/disable candle-strength filter (default: config)")
+    parser.add_argument("--rvol-threshold", type=float, default=None)
+    parser.add_argument("--candle-pct", type=float, default=None)
     args = parser.parse_args()
 
     summary = run_backtest(
@@ -220,6 +249,11 @@ def main():
         or_minutes=args.or_minutes,
         rr_ratio=args.rr_ratio,
         stop_mode=args.stop_mode,
+        filter_vwap=args.vwap,
+        filter_rvol=args.rvol,
+        rvol_threshold=args.rvol_threshold,
+        filter_candle=args.candle,
+        candle_pct=args.candle_pct,
     )
     print_summary(summary)
 

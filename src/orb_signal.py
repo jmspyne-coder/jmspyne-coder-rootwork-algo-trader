@@ -24,6 +24,11 @@ class ORBSignal:
     range_pct: float        # width as % of midline
     atr: float | None       # ATR if available
     timestamp: str          # when signal was generated
+    # ─── v2 confirmation-filter telemetry (defaults keep v1 construction valid) ───
+    vwap_at_entry: float | None = None    # session VWAP at the breakout bar
+    rvol_at_entry: float | None = None    # relative volume on the breakout bar
+    candle_strength: float | None = None  # directional close position in [0,1]
+    filters_passed: str = ""              # comma-separated enabled filters that passed
 
 
 def calculate_atr(daily_bars: pd.DataFrame, period: int = 14) -> float:
@@ -83,6 +88,125 @@ def compute_opening_range(
     }
 
 
+# ─── Confirmation Filters (v2) ────────────────────────────────────────
+# These confirm the QUALITY of the first breakout bar. They never change
+# which bar is the first breakout, nor the entry/stop/target levels — they
+# only decide whether that breakout is taken. With all filters disabled the
+# function returns the first breakout unconditionally, identical to v1.
+
+def compute_session_vwap(market_bars: pd.DataFrame) -> pd.Series:
+    """
+    Cumulative intraday VWAP (typical-price weighted), reset per call.
+    `market_bars` is assumed to be a single session, so a plain cumsum is
+    the daily reset. Returns a Series aligned to market_bars.index.
+    """
+    typical = (market_bars["high"] + market_bars["low"] + market_bars["close"]) / 3.0
+    cum_vol = market_bars["volume"].cumsum()
+    cum_pv = (typical * market_bars["volume"]).cumsum()
+    # Guard against zero cumulative volume (no trades yet) -> NaN, not div-by-zero.
+    return cum_pv / cum_vol.where(cum_vol > 0, np.nan)
+
+
+def compute_rvol(market_bars: pd.DataFrame, idx, lookback: int) -> float | None:
+    """
+    Relative volume on the bar at `idx`: its volume / mean volume of up to
+    `lookback` immediately-prior bars in the session. None if not computable.
+    """
+    try:
+        pos = market_bars.index.get_loc(idx)
+    except KeyError:
+        return None
+    if not isinstance(pos, int) or pos == 0:
+        return None
+    prior = market_bars["volume"].iloc[max(0, pos - lookback):pos]
+    if len(prior) == 0:
+        return None
+    avg = float(prior.mean())
+    if avg <= 0:
+        return None
+    return float(market_bars["volume"].iloc[pos] / avg)
+
+
+def compute_candle_strength(row, direction: str) -> float | None:
+    """
+    Directional close position within the bar's range, in [0, 1].
+    long  -> (close - low) / (high - low)   (1.0 = closed at the high)
+    short -> (high - close) / (high - low)  (1.0 = closed at the low)
+    None for a zero-range bar (strength undefined).
+    """
+    rng = row["high"] - row["low"]
+    if rng <= 0:
+        return None
+    if direction == "long":
+        return float((row["close"] - row["low"]) / rng)
+    return float((row["high"] - row["close"]) / rng)
+
+
+def evaluate_filters(
+    direction: str,
+    entry_price: float,
+    row,
+    idx,
+    vwap_series: pd.Series,
+    market_bars: pd.DataFrame,
+    use_vwap: bool,
+    use_rvol: bool,
+    rvol_threshold: float,
+    rvol_lookback: int,
+    use_candle: bool,
+    candle_pct: float,
+) -> tuple[bool, dict]:
+    """
+    Evaluate the three confirmation filters on the breakout bar.
+
+    Returns (all_enabled_passed, telemetry) where telemetry always carries the
+    measured values (vwap/rvol/candle_strength) plus the comma-separated list
+    of enabled filters that passed — even when a filter is disabled, so the
+    trade log captures the context for later analysis.
+    A filter whose value can't be computed FAILS when enabled (conservative).
+    """
+    vwap_val = None
+    if idx in vwap_series.index:
+        v = vwap_series.loc[idx]
+        vwap_val = float(v) if pd.notna(v) else None
+    rvol_val = compute_rvol(market_bars, idx, rvol_lookback)
+    candle_val = compute_candle_strength(row, direction)
+
+    passed = []
+    ok = True
+
+    if use_vwap:
+        if vwap_val is None:
+            ok = False
+        elif direction == "long" and entry_price > vwap_val:
+            passed.append("vwap")
+        elif direction == "short" and entry_price < vwap_val:
+            passed.append("vwap")
+        else:
+            ok = False
+
+    if use_rvol:
+        if rvol_val is not None and rvol_val >= rvol_threshold:
+            passed.append("rvol")
+        else:
+            ok = False
+
+    if use_candle:
+        # close must sit in the top (long) / bottom (short) `candle_pct` of the bar
+        if candle_val is not None and candle_val >= (1.0 - candle_pct):
+            passed.append("candle_strength")
+        else:
+            ok = False
+
+    telemetry = {
+        "vwap_at_entry": vwap_val,
+        "rvol_at_entry": rvol_val,
+        "candle_strength": candle_val,
+        "filters_passed": ",".join(passed),
+    }
+    return ok, telemetry
+
+
 def generate_signal(
     intraday_bars: pd.DataFrame,
     atr: float | None = None,
@@ -90,17 +214,33 @@ def generate_signal(
     rr_ratio: float = None,
     stop_mode: str = None,
     min_range_pct: float = None,
+    filter_vwap: bool = None,
+    filter_rvol: bool = None,
+    rvol_threshold: float = None,
+    filter_candle: bool = None,
+    candle_pct: float = None,
 ) -> ORBSignal | None:
     """
     Core signal generator. Scans post-opening-range bars for breakout.
 
-    Returns an ORBSignal if a breakout occurs, None otherwise.
-    Only returns the FIRST breakout of the day (max 1 signal per session).
+    Returns an ORBSignal if a breakout occurs AND passes all enabled
+    confirmation filters, None otherwise.
+    Only considers the FIRST breakout of the day (max 1 signal per session):
+    if that breakout fails an enabled filter, no trade is taken for the day.
+
+    Backward compatibility: with filter_vwap/filter_rvol/filter_candle all
+    False, the filters never gate, so output is identical to v1.
     """
     or_minutes = or_minutes or settings.OPENING_RANGE_MINUTES
     rr_ratio = rr_ratio or settings.REWARD_RISK_RATIO
     stop_mode = stop_mode or settings.STOP_MODE
     min_range_pct = min_range_pct or settings.MIN_RANGE_PCT
+    # Filter toggles/params: None -> fall back to config (note: default ON in v2).
+    filter_vwap = settings.FILTER_VWAP_ENABLED if filter_vwap is None else filter_vwap
+    filter_rvol = settings.FILTER_RVOL_ENABLED if filter_rvol is None else filter_rvol
+    rvol_threshold = settings.FILTER_RVOL_THRESHOLD if rvol_threshold is None else rvol_threshold
+    filter_candle = settings.FILTER_CANDLE_STRENGTH_ENABLED if filter_candle is None else filter_candle
+    candle_pct = settings.FILTER_CANDLE_STRENGTH_PCT if candle_pct is None else candle_pct
 
     # Step 1: compute opening range
     orng = compute_opening_range(intraday_bars, or_minutes)
@@ -115,9 +255,19 @@ def generate_signal(
     market_bars = intraday_bars.between_time("09:30", "15:44")
     post_or = market_bars[market_bars.index >= orng["or_end"]]
 
+    # Session VWAP base (full session up to force-close cutoff), computed once.
+    vwap_series = compute_session_vwap(market_bars)
+
     for idx, row in post_or.iterrows():
-        # Long breakout
-        if row["high"] > orng["or_high"]:
+        is_long = row["high"] > orng["or_high"]
+        is_short = row["low"] < orng["or_low"]
+        if not (is_long or is_short):
+            continue
+
+        # First breakout decides the day. Long takes priority on outside bars
+        # (matches v1 evaluation order).
+        direction = "long" if is_long else "short"
+        if direction == "long":
             entry = orng["or_high"]
             if stop_mode == "atr" and atr is not None:
                 stop = entry - (atr * settings.ATR_STOP_MULTIPLIER)
@@ -125,22 +275,7 @@ def generate_signal(
                 stop = orng["or_midline"]
             risk = entry - stop
             target = entry + (risk * rr_ratio)
-            return ORBSignal(
-                direction="long",
-                entry_price=entry,
-                stop_price=stop,
-                target_price=target,
-                or_high=orng["or_high"],
-                or_low=orng["or_low"],
-                or_midline=orng["or_midline"],
-                range_width=orng["range_width"],
-                range_pct=orng["range_pct"],
-                atr=atr,
-                timestamp=str(idx),
-            )
-
-        # Short breakout
-        if row["low"] < orng["or_low"]:
+        else:
             entry = orng["or_low"]
             if stop_mode == "atr" and atr is not None:
                 stop = entry + (atr * settings.ATR_STOP_MULTIPLIER)
@@ -148,19 +283,37 @@ def generate_signal(
                 stop = orng["or_midline"]
             risk = stop - entry
             target = entry - (risk * rr_ratio)
-            return ORBSignal(
-                direction="short",
-                entry_price=entry,
-                stop_price=stop,
-                target_price=target,
-                or_high=orng["or_high"],
-                or_low=orng["or_low"],
-                or_midline=orng["or_midline"],
-                range_width=orng["range_width"],
-                range_pct=orng["range_pct"],
-                atr=atr,
-                timestamp=str(idx),
-            )
+
+        # Confirmation gate on the first breakout bar.
+        passed, telemetry = evaluate_filters(
+            direction, entry, row, idx, vwap_series, market_bars,
+            use_vwap=filter_vwap,
+            use_rvol=filter_rvol,
+            rvol_threshold=rvol_threshold,
+            rvol_lookback=settings.FILTER_RVOL_LOOKBACK,
+            use_candle=filter_candle,
+            candle_pct=candle_pct,
+        )
+        if not passed:
+            return None  # unconfirmed first breakout -> no trade today
+
+        return ORBSignal(
+            direction=direction,
+            entry_price=entry,
+            stop_price=stop,
+            target_price=target,
+            or_high=orng["or_high"],
+            or_low=orng["or_low"],
+            or_midline=orng["or_midline"],
+            range_width=orng["range_width"],
+            range_pct=orng["range_pct"],
+            atr=atr,
+            timestamp=str(idx),
+            vwap_at_entry=telemetry["vwap_at_entry"],
+            rvol_at_entry=telemetry["rvol_at_entry"],
+            candle_strength=telemetry["candle_strength"],
+            filters_passed=telemetry["filters_passed"],
+        )
 
     return None
 
@@ -220,4 +373,9 @@ def _trade_result(signal: ORBSignal, exit_time, exit_price, pnl, exit_reason) ->
         "or_low": signal.or_low,
         "range_pct": round(signal.range_pct, 6),
         "atr": signal.atr,
+        # v2 confirmation-filter telemetry (carried through for logging/analysis)
+        "vwap_at_entry": signal.vwap_at_entry,
+        "rvol_at_entry": signal.rvol_at_entry,
+        "candle_strength": signal.candle_strength,
+        "filters_passed": signal.filters_passed,
     }

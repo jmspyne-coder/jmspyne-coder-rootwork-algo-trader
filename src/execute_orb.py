@@ -21,7 +21,7 @@ from src.orb_signal import generate_signal, calculate_atr
 from src.risk_manager import (
     load_risk_state, can_trade, calculate_position_size, save_risk_state,
 )
-from src.trade_logger import log_trade
+from src.trade_logger import log_trade, init_tables
 from src.notifications import (
     notify_trade_entry, notify_no_signal, notify_risk_halt,
 )
@@ -126,6 +126,37 @@ def main():
     except Exception as e:
         print(f"  ORDER ERROR: {e}")
         sys.exit(1)
+
+    # Log the entry (with v2 filter telemetry) to MotherDuck. Best-effort: the
+    # order already filled server-side, so a logging failure must not fail the run.
+    # Exit fields stay NULL/'open' — the bracket resolves later; EOD logs the daily summary.
+    try:
+        init_tables()
+        log_trade(
+            trade_date=str(today),
+            ticker=settings.TICKER,
+            direction=signal.direction,
+            entry_price=signal.entry_price,
+            stop_price=signal.stop_price,
+            target_price=signal.target_price,
+            shares=shares,
+            entry_time=signal.timestamp,
+            exit_reason="open",
+            or_high=signal.or_high,
+            or_low=signal.or_low,
+            range_pct=signal.range_pct,
+            atr=signal.atr,
+            equity_before=equity,
+            vwap_at_entry=signal.vwap_at_entry,
+            rvol_at_entry=signal.rvol_at_entry,
+            candle_strength=signal.candle_strength,
+            filters_passed=signal.filters_passed,
+            strategy="orb_v2",
+            mode="paper" if settings.ALPACA_PAPER else "live",
+        )
+        print("  Trade logged to MotherDuck (algo_trade_log).")
+    except Exception as e:
+        print(f"  Trade-log error (non-fatal): {e}")
 
 
 if __name__ == "__main__":

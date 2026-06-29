@@ -59,7 +59,7 @@ def main():
     send_notification(
         f"*PRE-MARKET* | {now.strftime('%Y-%m-%d')}\n"
         f"Ticker: `{settings.TICKER}` | Equity: ${equity:,.2f}\n"
-        f"ATR: {atr:.2f if atr else 'N/A'} | ORB window: {settings.OPENING_RANGE_MINUTES} min\n"
+        f"ATR: {f'{atr:.2f}' if atr else 'N/A'} | ORB window: {settings.OPENING_RANGE_MINUTES} min\n"
         f"Risk/trade: {settings.RISK_PER_TRADE_PCT:.1%} = ${equity * settings.RISK_PER_TRADE_PCT:,.0f}",
         ":sunrise:",
     )

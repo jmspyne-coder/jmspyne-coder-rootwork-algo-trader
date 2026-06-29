@@ -1,0 +1,31 @@
+# ─── Secrets & environment ───────────────────────────────
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+hitchpass-*.txt
+
+# ─── Runtime state (must NOT be committed) ──────────────
+# Risk state is per-deployment; committing it would version-control
+# live trading state. See CLAUDE.md "Risk state persistence" caveat.
+config/risk_state.json
+
+# ─── Python ──────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+
+# ─── Backtest / sweep outputs ───────────────────────────
+backtest_*.csv
+sweep_results_*.csv
+
+# ─── OS / editor ────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

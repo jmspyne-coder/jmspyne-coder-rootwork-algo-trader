@@ -37,6 +37,26 @@ ATR_STOP_MULTIPLIER = float(os.getenv("ALGO_ATR_STOP_MULT", "1.5"))
 # Minimum opening range width as % of price — skip if too narrow
 MIN_RANGE_PCT = float(os.getenv("ALGO_MIN_RANGE_PCT", "0.003"))  # 0.3%
 
+# ─── Signal Confirmation Filters (v2) ─────────────────────────────────
+# Each filter is evaluated on the FIRST breakout bar and independently
+# toggleable. With all three disabled, generate_signal() reproduces v1
+# behavior exactly. See src/orb_signal.py for the gating logic.
+
+# Filter 1 — VWAP directional filter: long requires breakout level above
+# session VWAP at breakout; short requires below.
+FILTER_VWAP_ENABLED = os.getenv("FILTER_VWAP_ENABLED", "true").lower() == "true"
+
+# Filter 2 — Relative volume: breakout-bar volume vs mean of prior N bars.
+FILTER_RVOL_ENABLED = os.getenv("FILTER_RVOL_ENABLED", "true").lower() == "true"
+FILTER_RVOL_THRESHOLD = float(os.getenv("FILTER_RVOL_THRESHOLD", "1.5"))
+FILTER_RVOL_LOOKBACK = int(os.getenv("FILTER_RVOL_LOOKBACK", "20"))  # prior bars
+
+# Filter 3 — Candle strength: where the breakout bar closes within its range.
+# long requires close in the top FILTER_CANDLE_STRENGTH_PCT of the bar;
+# short requires close in the bottom FILTER_CANDLE_STRENGTH_PCT.
+FILTER_CANDLE_STRENGTH_ENABLED = os.getenv("FILTER_CANDLE_STRENGTH_ENABLED", "true").lower() == "true"
+FILTER_CANDLE_STRENGTH_PCT = float(os.getenv("FILTER_CANDLE_STRENGTH_PCT", "0.3"))
+
 # ─── Risk Management ─────────────────────────────────────────────────
 RISK_PER_TRADE_PCT = float(os.getenv("ALGO_RISK_PER_TRADE", "0.015"))  # 1.5%
 MAX_DAILY_LOSS_PCT = float(os.getenv("ALGO_MAX_DAILY_LOSS", "0.04"))   # 4%
