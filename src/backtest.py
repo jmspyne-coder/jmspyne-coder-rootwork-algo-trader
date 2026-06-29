@@ -138,60 +138,104 @@ def run_backtest(
     return summary
 
 
-def calculate_performance(trades: list, initial_capital: float, trading_days: list) -> dict:
-    """Calculate summary statistics from trade results."""
-    if not trades:
-        return {"error": "No trades to analyze"}
+def _curve_stats(pnls: list, dates: list, initial_capital: float) -> dict:
+    """Performance bundle for one chronological P&L series.
 
-    pnls = [t["trade_pnl"] for t in trades]
-    equities = [t["equity_after"] for t in trades]
-    final_equity = equities[-1] if equities else initial_capital
-
+    Rebuilds the equity curve from this series so max drawdown is measured
+    on the same series (gross or net), not borrowed from the other.
+    """
     wins = [p for p in pnls if p > 0]
     losses = [p for p in pnls if p < 0]
     scratches = [p for p in pnls if p == 0]
 
-    total_return = (final_equity - initial_capital) / initial_capital
-    win_rate = len(wins) / len(pnls) if pnls else 0
-    avg_win = np.mean(wins) if wins else 0
-    avg_loss = np.mean(losses) if losses else 0
-    profit_factor = abs(sum(wins) / sum(losses)) if losses and sum(losses) != 0 else float("inf")
-    max_drawdown = max(t.get("drawdown_pct", 0) for t in trades)
+    equity = initial_capital
+    peak = initial_capital
+    max_dd = 0.0
+    for p in pnls:
+        equity += p
+        if equity > peak:
+            peak = equity
+        dd = (peak - equity) / peak if peak > 0 else 0
+        if dd > max_dd:
+            max_dd = dd
 
-    # Sharpe approximation (daily returns)
+    total_return = (equity - initial_capital) / initial_capital if initial_capital else 0
+
     daily_pnl = {}
-    for t in trades:
-        d = t.get("date", t.get("entry_time", "")[:10])
-        daily_pnl[d] = daily_pnl.get(d, 0) + t["trade_pnl"]
+    for d, p in zip(dates, pnls):
+        daily_pnl[d] = daily_pnl.get(d, 0) + p
     daily_returns = list(daily_pnl.values())
     if len(daily_returns) > 1 and np.std(daily_returns) > 0:
         sharpe = (np.mean(daily_returns) / np.std(daily_returns)) * np.sqrt(252)
     else:
         sharpe = 0
 
-    # Exit reason breakdown
+    return {
+        "win_rate": round(len(wins) / len(pnls), 4) if pnls else 0,
+        "wins": len(wins),
+        "losses": len(losses),
+        "scratches": len(scratches),
+        "total_pnl": round(sum(pnls), 2),
+        "total_return": round(total_return, 4),
+        "avg_win": round(np.mean(wins), 2) if wins else 0,
+        "avg_loss": round(np.mean(losses), 2) if losses else 0,
+        "profit_factor": round(abs(sum(wins) / sum(losses)), 2) if losses and sum(losses) != 0 else float("inf"),
+        "sharpe_ratio": round(sharpe, 2),
+        "max_drawdown": round(max_dd, 4),
+        "final_equity": round(equity, 2),
+    }
+
+
+def calculate_performance(trades: list, initial_capital: float, trading_days: list) -> dict:
+    """Summary statistics, reported net of costs (primary) and gross.
+
+    Net is the honest headline: it is what the equity curve actually did
+    after slippage, spread, and commission. Gross is kept alongside so the
+    cost drag is visible. With costs disabled the two are identical.
+    """
+    if not trades:
+        return {"error": "No trades to analyze"}
+
+    dates = [t.get("date", t.get("entry_time", "")[:10]) for t in trades]
+    net_pnls = [t["trade_pnl"] for t in trades]
+    # gross_pnl/cost exist when costs are wired in; fall back gracefully.
+    gross_pnls = [t.get("gross_pnl", t["trade_pnl"]) for t in trades]
+    costs = [t.get("cost", 0.0) for t in trades]
+
+    net = _curve_stats(net_pnls, dates, initial_capital)
+    gross = _curve_stats(gross_pnls, dates, initial_capital)
+
     exit_reasons = {}
     for t in trades:
         reason = t.get("exit_reason", "unknown")
         exit_reasons[reason] = exit_reasons.get(reason, 0) + 1
 
+    total_costs = round(sum(costs), 2)
+    cost_drag = round(total_costs / gross["total_pnl"], 4) if gross["total_pnl"] else None
+
     return {
-        "total_trades": len(pnls),
-        "wins": len(wins),
-        "losses": len(losses),
-        "scratches": len(scratches),
-        "win_rate": round(win_rate, 4),
-        "total_pnl": round(sum(pnls), 2),
-        "total_return": round(total_return, 4),
-        "avg_win": round(avg_win, 2),
-        "avg_loss": round(avg_loss, 2),
-        "profit_factor": round(profit_factor, 2),
-        "sharpe_ratio": round(sharpe, 2),
-        "max_drawdown": round(max_drawdown, 4),
-        "final_equity": round(final_equity, 2),
+        "total_trades": len(net_pnls),
+        # primary metrics, net of costs
+        "wins": net["wins"],
+        "losses": net["losses"],
+        "scratches": net["scratches"],
+        "win_rate": net["win_rate"],
+        "total_pnl": net["total_pnl"],
+        "total_return": net["total_return"],
+        "avg_win": net["avg_win"],
+        "avg_loss": net["avg_loss"],
+        "profit_factor": net["profit_factor"],
+        "sharpe_ratio": net["sharpe_ratio"],
+        "max_drawdown": net["max_drawdown"],
+        "final_equity": net["final_equity"],
         "initial_capital": initial_capital,
         "trading_days": len(trading_days),
         "exit_reasons": exit_reasons,
+        # cost accounting
+        "total_costs": total_costs,
+        "cost_drag_pct": cost_drag,  # total costs / gross P&L
+        # gross (cost-free) bundle for side-by-side comparison
+        "gross": gross,
     }
 
 
@@ -201,22 +245,31 @@ def print_summary(summary: dict):
         print(f"\n  Error: {summary['error']}")
         return
 
+    def pf(x):
+        return "inf" if x == float("inf") else f"{x:.2f}"
+
     p = summary.get("parameters", {})
+    g = summary.get("gross", {})
     print(f"\n{'='*60}")
     print(f"  BACKTEST RESULTS: {p.get('ticker', '?')}")
     print(f"  {p.get('start', '?')} → {p.get('end', '?')}")
     print(f"{'='*60}")
     print(f"  Total trades:     {summary['total_trades']}")
-    print(f"  Win/Loss/Scratch: {summary['wins']}/{summary['losses']}/{summary['scratches']}")
-    print(f"  Win rate:         {summary['win_rate']:.1%}")
-    print(f"  Profit factor:    {summary['profit_factor']:.2f}")
-    print(f"  Sharpe ratio:     {summary['sharpe_ratio']:.2f}")
-    print(f"  Total P&L:        ${summary['total_pnl']:,.2f}")
-    print(f"  Total return:     {summary['total_return']:.1%}")
-    print(f"  Max drawdown:     {summary['max_drawdown']:.1%}")
-    print(f"  Final equity:     ${summary['final_equity']:,.2f}")
-    print(f"  Avg win:          ${summary['avg_win']:,.2f}")
-    print(f"  Avg loss:         ${summary['avg_loss']:,.2f}")
+    print(f"  Win/Loss/Scratch: {summary['wins']}/{summary['losses']}/{summary['scratches']}  (net)")
+    print(f"  {'-'*56}")
+    print(f"  {'Metric':<18}{'Gross':>18}{'Net of costs':>18}")
+    print(f"  {'Win rate':<18}{g.get('win_rate', 0):>17.1%}{summary['win_rate']:>18.1%}")
+    print(f"  {'Profit factor':<18}{pf(g.get('profit_factor', 0)):>18}{pf(summary['profit_factor']):>18}")
+    print(f"  {'Sharpe ratio':<18}{g.get('sharpe_ratio', 0):>18.2f}{summary['sharpe_ratio']:>18.2f}")
+    print(f"  {'Total P&L':<18}{('$'+format(g.get('total_pnl', 0), ',.2f')):>18}{('$'+format(summary['total_pnl'], ',.2f')):>18}")
+    print(f"  {'Total return':<18}{g.get('total_return', 0):>17.1%}{summary['total_return']:>18.1%}")
+    print(f"  {'Max drawdown':<18}{g.get('max_drawdown', 0):>17.1%}{summary['max_drawdown']:>18.1%}")
+    print(f"  {'Final equity':<18}{('$'+format(g.get('final_equity', 0), ',.2f')):>18}{('$'+format(summary['final_equity'], ',.2f')):>18}")
+    print(f"  {'-'*56}")
+    drag = summary.get("cost_drag_pct")
+    drag_str = f"{drag:.1%} of gross P&L" if drag is not None else "n/a"
+    print(f"  Total costs:      ${summary['total_costs']:,.2f}  ({drag_str})")
+    print(f"  Avg win/loss:     ${summary['avg_win']:,.2f} / ${summary['avg_loss']:,.2f}  (net)")
     print(f"  Exit reasons:     {summary['exit_reasons']}")
     print(f"{'='*60}")
 

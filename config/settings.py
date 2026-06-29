@@ -74,4 +74,21 @@ MARKET_CLOSE = "16:00"
 BACKTEST_START = os.getenv("ALGO_BT_START", "2024-01-01")
 BACKTEST_END = os.getenv("ALGO_BT_END", "2026-06-01")
 BACKTEST_INITIAL_CAPITAL = float(os.getenv("ALGO_BT_CAPITAL", "10000"))
-BACKTEST_COMMISSION_PER_SHARE = 0.0
+
+# ─── Transaction Costs (backtest realism) ─────────────────────────────
+# A round trip is two fills (entry + exit). Each leg pays slippage plus
+# half the bid/ask spread, in basis points of price, plus a flat
+# per-share commission on both legs. This is what separates a backtest
+# Sharpe from a tradeable one. See src/costs.py.
+#
+# Backward compatibility: set ALGO_BT_COSTS=false (or all three params to
+# 0) and net equals gross, reproducing the cost-free v1 results exactly.
+#
+# Defaults are conservative for a liquid ETF like SPY: 1 bp slippage per
+# leg, 1 bp full spread (0.5 bp per leg), commission free (Alpaca
+# equities). That is roughly 3 bps round trip. Crank these up to stress
+# test how much cost the edge can absorb before it disappears.
+BACKTEST_COSTS_ENABLED = os.getenv("ALGO_BT_COSTS", "true").lower() == "true"
+BACKTEST_SLIPPAGE_BPS = float(os.getenv("ALGO_BT_SLIPPAGE_BPS", "1.0"))  # per leg
+BACKTEST_SPREAD_BPS = float(os.getenv("ALGO_BT_SPREAD_BPS", "1.0"))      # full spread; half paid per leg
+BACKTEST_COMMISSION_PER_SHARE = float(os.getenv("ALGO_BT_COMMISSION", "0.0"))  # per leg

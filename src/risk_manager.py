@@ -9,6 +9,7 @@ import os
 from dataclasses import dataclass, asdict
 from datetime import datetime
 from config import settings
+from src.costs import round_trip_cost_per_share
 
 
 @dataclass
@@ -224,20 +225,26 @@ def simulate_risk_controls(
         if day_pnl < 0 and abs(day_pnl / equity) >= settings.MAX_DAILY_LOSS_PCT:
             continue
 
-        # Execute
-        trade_pnl = trade["pnl_per_share"] * shares
-        equity += trade_pnl
+        # Execute. Round-trip costs are netted out of gross P&L. Net is
+        # what drives equity, drawdown, and the win/loss classification:
+        # a marginal gross win can flip to a net loss once costs are paid.
+        gross_pnl = trade["pnl_per_share"] * shares
+        cost = round_trip_cost_per_share(trade["entry_price"]) * shares
+        net_pnl = gross_pnl - cost
+        equity += net_pnl
 
         if equity > peak_equity:
             peak_equity = equity
 
-        if trade["pnl_per_share"] < 0:
+        if net_pnl < 0:
             consecutive_losses += 1
         else:
             consecutive_losses = 0
 
         trade["shares"] = shares
-        trade["trade_pnl"] = round(trade_pnl, 2)
+        trade["gross_pnl"] = round(gross_pnl, 2)
+        trade["cost"] = round(cost, 2)
+        trade["trade_pnl"] = round(net_pnl, 2)
         trade["equity_after"] = round(equity, 2)
         trade["drawdown_pct"] = round(
             (peak_equity - equity) / peak_equity if peak_equity > 0 else 0, 4
