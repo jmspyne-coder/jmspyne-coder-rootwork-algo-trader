@@ -81,6 +81,8 @@ morning — it is not a continuous ticker, so mid-day quiet is normal.
 | Symptom | Cause | Fix |
 |---|---|---|
 | `You must supply a method of authentication` | Alpaca secrets missing | set `ALPACA_API_KEY_ID` / `ALPACA_API_SECRET_KEY` |
+| `401 Unauthorized` on paper-api | live keys used against the paper endpoint | use **paper** keys (start with `PK`), not live (`AK`) |
+| `403 ... subscription does not permit querying recent SIP data` | free data plan blocks recent SIP | live path uses **IEX** (`ALPACA_DATA_FEED=iex`, the default). Only set `sip` with a paid data plan. |
 | MotherDuck "no token" / logging error | token missing | set `MOTHERDUCK_TOKEN` |
 | Every scheduled run is red | crash early — open the failing step's log | match the error here |
 | No runs at all in Actions | Actions disabled / schedules paused | enable in the Actions tab |

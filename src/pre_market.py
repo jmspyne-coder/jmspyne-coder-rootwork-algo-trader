@@ -41,7 +41,7 @@ def main():
         end = now.strftime("%Y-%m-%d")
         start = (now - timedelta(days=30)).strftime("%Y-%m-%d")
         for tk in settings.TICKERS:
-            atrs[tk] = calculate_atr(fetch_daily_bars(tk, start, end, data_client), settings.ATR_PERIOD)
+            atrs[tk] = calculate_atr(fetch_daily_bars(tk, start, end, data_client, feed=settings.ALPACA_DATA_FEED), settings.ATR_PERIOD)
     except Exception as e:
         print(f"  ATR calculation error: {e}")
     atr_str = " | ".join(f"{tk} ATR {a:.2f}" if a else f"{tk} ATR N/A" for tk, a in atrs.items()) or "ATR N/A"

@@ -22,6 +22,12 @@ ALPACA_BASE_URL = (
     else "https://api.alpaca.markets"
 )
 
+# Market-data feed for the LIVE path. Free Alpaca data plans cannot query recent
+# SIP data (403 "subscription does not permit querying recent SIP data"), but DO
+# get real-time IEX. So live fetches default to IEX. Backtests use historical SIP
+# (allowed when older than 15 min, and more complete). Set 'sip' if you upgrade.
+ALPACA_DATA_FEED = os.getenv("ALPACA_DATA_FEED", "iex")
+
 # ─── MotherDuck ───────────────────────────────────────────────────────
 MOTHERDUCK_TOKEN = os.getenv("MOTHERDUCK_TOKEN", "")
 MOTHERDUCK_DB = "my_db"

@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest
 from alpaca.data.timeframe import TimeFrame
+from alpaca.data.enums import DataFeed
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import (
     MarketOrderRequest,
@@ -32,6 +33,12 @@ def get_trading_client() -> TradingClient:
     )
 
 
+def _resolve_feed(feed: str | None) -> DataFeed:
+    """Map a feed name to the DataFeed enum; default to the configured live feed."""
+    name = (feed or settings.ALPACA_DATA_FEED or "iex").lower()
+    return DataFeed.SIP if name == "sip" else DataFeed.IEX
+
+
 # ─── Data Fetching ───────────────────────────────────────────────────
 
 def fetch_intraday_bars(
@@ -39,8 +46,10 @@ def fetch_intraday_bars(
     date: datetime,
     timeframe: TimeFrame = TimeFrame.Minute,
     data_client: StockHistoricalDataClient | None = None,
+    feed: str | None = None,
 ) -> pd.DataFrame:
-    """Fetch 1-min bars for a single trading day."""
+    """Fetch 1-min bars for a single trading day. Live path: defaults to IEX
+    (free-tier real-time); recent SIP is forbidden on free plans."""
     client = data_client or get_data_client()
     start = datetime.combine(date, datetime.min.time())
     end = start + timedelta(days=1)
@@ -49,6 +58,7 @@ def fetch_intraday_bars(
         timeframe=timeframe,
         start=start,
         end=end,
+        feed=_resolve_feed(feed),
     )
     bars = client.get_stock_bars(request)
     df = bars.df
@@ -63,14 +73,17 @@ def fetch_daily_bars(
     start: str,
     end: str,
     data_client: StockHistoricalDataClient | None = None,
+    feed: str | None = "sip",
 ) -> pd.DataFrame:
-    """Fetch daily bars for ATR calculation and backtesting."""
+    """Fetch daily bars for ATR and backtesting. Defaults to SIP (historical,
+    complete); the live ATR fetch passes the live feed (IEX) for recent days."""
     client = data_client or get_data_client()
     request = StockBarsRequest(
         symbol_or_symbols=ticker,
         timeframe=TimeFrame.Day,
         start=datetime.fromisoformat(start),
         end=datetime.fromisoformat(end),
+        feed=_resolve_feed(feed),
     )
     bars = client.get_stock_bars(request)
     df = bars.df
@@ -84,14 +97,17 @@ def fetch_multi_day_intraday(
     start: str,
     end: str,
     data_client: StockHistoricalDataClient | None = None,
+    feed: str | None = "sip",
 ) -> pd.DataFrame:
-    """Fetch 1-min bars across a date range for backtesting."""
+    """Fetch 1-min bars across a date range for backtesting. Defaults to SIP
+    (historical, allowed when older than 15 min, and more complete than IEX)."""
     client = data_client or get_data_client()
     request = StockBarsRequest(
         symbol_or_symbols=ticker,
         timeframe=TimeFrame.Minute,
         start=datetime.fromisoformat(start),
         end=datetime.fromisoformat(end),
+        feed=_resolve_feed(feed),
     )
     bars = client.get_stock_bars(request)
     df = bars.df

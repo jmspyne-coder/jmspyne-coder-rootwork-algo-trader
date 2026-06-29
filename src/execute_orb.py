@@ -56,7 +56,8 @@ def trade_symbol(ticker, equity, capital_cap, data_client, trading_client, today
     # ATR for the stop.
     try:
         start_daily = (now - timedelta(days=30)).strftime("%Y-%m-%d")
-        daily = fetch_daily_bars(ticker, start_daily, now.strftime("%Y-%m-%d"), data_client)
+        daily = fetch_daily_bars(ticker, start_daily, now.strftime("%Y-%m-%d"), data_client,
+                                 feed=settings.ALPACA_DATA_FEED)
         atr = calculate_atr(daily, settings.ATR_PERIOD)
     except Exception:
         atr = None
