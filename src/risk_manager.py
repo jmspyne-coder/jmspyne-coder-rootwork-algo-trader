@@ -191,10 +191,15 @@ def calculate_position_size(
     entry_price: float,
     stop_price: float,
     risk_pct: float = None,
+    capital_cap: float = None,
 ) -> int:
     """
     ATR-aware position sizing: risk a fixed % of equity per trade.
     Position size = (equity * risk%) / (entry - stop distance)
+
+    capital_cap bounds the notional (buying power) for this position and
+    defaults to full equity. For multi-symbol trading pass equity / N so two
+    concurrent positions don't each try to claim the whole account.
 
     Returns number of shares (integer, rounds down).
     """
@@ -207,8 +212,9 @@ def calculate_position_size(
 
     shares = int(risk_dollars / stop_distance)
 
-    # Sanity check: don't exceed buying power
-    max_shares_by_capital = int(equity / entry_price)
+    # Cap by available capital (buying power) for this position.
+    cap = capital_cap if capital_cap is not None else equity
+    max_shares_by_capital = int(cap / entry_price)
     shares = min(shares, max_shares_by_capital)
 
     return max(shares, 0)

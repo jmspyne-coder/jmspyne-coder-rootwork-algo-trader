@@ -30,7 +30,8 @@ env:
   MOTHERDUCK_TOKEN: ${{ secrets.MOTHERDUCK_TOKEN }}
   SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
   ALPACA_PAPER: 'true'
-  ALGO_TICKER: 'SPY'
+  ALGO_TICKER: 'SPY'          # single-symbol default (backtest/manual)
+  ALGO_TICKERS: 'SPY,QQQ'     # live trading set (execute/pre/EOD loop over these)
   GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
   GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
 

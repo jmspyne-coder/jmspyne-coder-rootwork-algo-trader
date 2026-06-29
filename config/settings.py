@@ -30,7 +30,11 @@ MOTHERDUCK_DB = "my_db"
 SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL", "")
 
 # ─── Strategy: ORB Parameters ────────────────────────────────────────
-TICKER = os.getenv("ALGO_TICKER", "SPY")
+TICKER = os.getenv("ALGO_TICKER", "SPY")  # single-symbol default (backtest/analysis)
+# Live trading set. Validated: SPY + QQQ (IWM excluded — the edge fails on
+# small-caps). The live entrypoints loop over these; backtest/analysis tools
+# still take a single --ticker.
+TICKERS = [t.strip() for t in os.getenv("ALGO_TICKERS", "SPY,QQQ").split(",") if t.strip()]
 OPENING_RANGE_MINUTES = int(os.getenv("ALGO_ORB_MINUTES", "5"))
 REWARD_RISK_RATIO = float(os.getenv("ALGO_RR_RATIO", "2.0"))
 STOP_MODE = os.getenv("ALGO_STOP_MODE", "atr")

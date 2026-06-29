@@ -33,17 +33,19 @@ def main():
         print(f"  ERROR fetching account: {e}")
         sys.exit(1)
 
-    # 2. Calculate ATR
+    # 2. Calculate ATR per symbol (for the notification; sizing happens at execute)
+    from datetime import timedelta
+    atrs = {}
     try:
         data_client = get_data_client()
         end = now.strftime("%Y-%m-%d")
-        start = (now - __import__("datetime").timedelta(days=30)).strftime("%Y-%m-%d")
-        daily = fetch_daily_bars(settings.TICKER, start, end, data_client)
-        atr = calculate_atr(daily, settings.ATR_PERIOD)
-        print(f"  ATR({settings.ATR_PERIOD}): {atr:.4f}" if atr else "  ATR: insufficient data")
+        start = (now - timedelta(days=30)).strftime("%Y-%m-%d")
+        for tk in settings.TICKERS:
+            atrs[tk] = calculate_atr(fetch_daily_bars(tk, start, end, data_client), settings.ATR_PERIOD)
     except Exception as e:
         print(f"  ATR calculation error: {e}")
-        atr = None
+    atr_str = " | ".join(f"{tk} ATR {a:.2f}" if a else f"{tk} ATR N/A" for tk, a in atrs.items()) or "ATR N/A"
+    print(f"  {atr_str}")
 
     # 3. Reset daily risk state
     state = load_risk_state(equity)
@@ -60,9 +62,9 @@ def main():
     # 5. Notify
     send_notification(
         f"*PRE-MARKET* | {now.strftime('%Y-%m-%d')}\n"
-        f"Ticker: `{settings.TICKER}` | Equity: ${equity:,.2f}\n"
-        f"ATR: {f'{atr:.2f}' if atr else 'N/A'} | ORB window: {settings.OPENING_RANGE_MINUTES} min\n"
-        f"Risk/trade: {settings.RISK_PER_TRADE_PCT:.1%} = ${equity * settings.RISK_PER_TRADE_PCT:,.0f}",
+        f"Symbols: `{', '.join(settings.TICKERS)}` | Equity: ${equity:,.2f}\n"
+        f"{atr_str} | ORB window: {settings.OPENING_RANGE_MINUTES} min\n"
+        f"Risk/trade: {settings.RISK_PER_TRADE_PCT:.1%} = ${equity * settings.RISK_PER_TRADE_PCT:,.0f} each",
         ":sunrise:",
     )
     print("  Pre-market setup complete.")

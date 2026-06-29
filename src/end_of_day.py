@@ -84,7 +84,7 @@ def main():
         init_tables()
         log_daily_summary(
             summary_date=today_str,
-            ticker=settings.TICKER,
+            ticker=",".join(settings.TICKERS),
             trades_taken=filled_count,
             wins=wins,
             losses=losses,
@@ -107,9 +107,10 @@ def main():
     try:
         from src.reconcile import reconcile_today
         mode = "paper" if settings.ALPACA_PAPER else "live"
-        res = reconcile_today(today_str, settings.TICKER, mode, trading_client)
-        print(f"  Reconciled {res['reconciled']}/{res['open_rows']} open trades "
-              f"({res['round_trips']} round trips from fills).")
+        for tk in settings.TICKERS:
+            res = reconcile_today(today_str, tk, mode, trading_client)
+            print(f"  [{tk}] reconciled {res['reconciled']}/{res['open_rows']} "
+                  f"({res['round_trips']} round trips).")
     except Exception as e:
         print(f"  Trade reconciliation error (non-fatal): {e}")
 
@@ -127,7 +128,7 @@ def main():
     # 6. Daily email
     send_daily_email(
         date=today_str,
-        ticker=settings.TICKER,
+        ticker=",".join(settings.TICKERS),
         trades_taken=filled_count,
         wins=wins,
         losses=losses,
