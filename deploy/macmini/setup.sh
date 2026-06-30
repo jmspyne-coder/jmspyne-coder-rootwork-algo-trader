@@ -64,7 +64,7 @@ code="$(curl -sS -m 30 -o /dev/null -w '%{http_code}' \
   -H "Authorization: Bearer $(cat "$CFG/gh_token")" \
   -H "Accept: application/vnd.github+json" \
   -H "X-GitHub-Api-Version: 2022-11-28" \
-  "https://api.github.com/repos/$OWNER/$REPO/actions/workflows/$WF")"
+  "https://api.github.com/repos/$OWNER/$REPO/actions/workflows/$WF")" || code="000"
 if [ "$code" != "200" ]; then
   echo
   echo "!! Token check FAILED (HTTP $code)."
@@ -92,6 +92,11 @@ mkdir -p "$STATE"
 . "$CFG/config"                      # sets OWNER REPO WF
 TOKEN="$(cat "$CFG/gh_token")"
 LOG="$STATE/dispatch.log"
+
+# Cap the log so it can't grow unbounded on an unattended machine.
+if [ -f "$LOG" ] && [ "$(wc -l < "$LOG" 2>/dev/null || echo 0)" -gt 5000 ]; then
+  tail -n 1000 "$LOG" > "$LOG.tmp" 2>/dev/null && mv "$LOG.tmp" "$LOG"
+fi
 
 dispatch () {
   local script="$1" resp
@@ -129,9 +134,10 @@ fire () {                                     # fire <script> <start_hhmm> <end_
 
 # Windows are wider than the launchd interval so a tick is guaranteed to land
 # inside. execute_orb dispatches early enough that, even with Actions queue lag,
-# the code runs inside its own 09:36-09:55 ET freshness guard.
+# the code runs inside its own 09:36-09:46 ET entry window + bar-freshness guard.
+# Holidays/half-days are handled server-side by the code's market-calendar gate.
 fire pre_market  09:24 09:34
-fire execute_orb 09:38 09:46
+fire execute_orb 09:38 09:43
 fire end_of_day  15:44 15:54
 exit 0
 DISPATCH_EOF
@@ -157,9 +163,22 @@ cat > "$PLIST" <<EOF
 </plist>
 EOF
 
-# ---- 6) (re)load -----------------------------------------------------------
-launchctl unload "$PLIST" 2>/dev/null || true
-launchctl load -w "$PLIST"
+# ---- 6) (re)load (bootstrap on modern macOS; VERIFY it actually loaded) -----
+# `launchctl load -w` is deprecated and can return 0 while scheduling nothing.
+# Use bootstrap, then assert the agent is really loaded, and fail loudly if not
+# (a silent no-op on a remote machine is the worst case).
+UID_NUM="$(id -u)"
+launchctl bootout "gui/$UID_NUM/com.rootwork.algotrader" 2>/dev/null || true
+launchctl bootstrap "gui/$UID_NUM" "$PLIST" 2>/dev/null \
+  || launchctl load -w "$PLIST" 2>/dev/null || true
+launchctl kickstart "gui/$UID_NUM/com.rootwork.algotrader" 2>/dev/null || true
+if ! launchctl print "gui/$UID_NUM/com.rootwork.algotrader" >/dev/null 2>&1 \
+   && ! launchctl list | grep -q com.rootwork.algotrader; then
+  echo "!! The launchd agent did NOT load — NOTHING is scheduled."
+  echo "   Check: launchctl print gui/$UID_NUM/com.rootwork.algotrader"
+  exit 1
+fi
+echo "launchd agent loaded and verified."
 
 echo
 echo "Installed and scheduled. The trigger now runs every 2 minutes and will"

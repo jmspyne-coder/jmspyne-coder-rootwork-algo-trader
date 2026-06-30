@@ -50,7 +50,15 @@ def reconstruct_round_trips(fills: list[dict]) -> list[dict]:
             })
             lot = None
         else:
-            lot = f  # same side again before a close; start a fresh lot
+            # Same side again before a close: a partial entry that filled in
+            # more than one lot. Accumulate (volume-weighted) rather than
+            # discard the first lot, so the entry price and qty stay correct.
+            total = lot["qty"] + f["qty"]
+            lot = {
+                **f,
+                "qty": total,
+                "price": (lot["price"] * lot["qty"] + f["price"] * f["qty"]) / total if total else f["price"],
+            }
     return trips
 
 
@@ -63,12 +71,18 @@ def match_exits(open_rows: list[dict], trips: list[dict]) -> list[dict]:
     matches what actually happened in the account (the logged entry was only the
     signal level, which can differ from the fill on a slipped/late entry).
     """
+    if len(open_rows) != len(trips):
+        print(f"  [reconcile] WARN: {len(open_rows)} open row(s) vs {len(trips)} round trip(s) — "
+              f"pairing first {min(len(open_rows), len(trips))}; any extra open row is left open "
+              f"(visible, not silently P&L'd).")
     updates = []
     for row, trip in zip(open_rows, trips):
         sign = 1 if row["direction"] == "long" else -1
         entry = trip["entry_price"]  # actual entry fill
         pnl_ps = sign * (trip["exit_price"] - entry)
-        shares = row.get("shares") or trip["qty"]
+        # Prefer the ACTUAL filled qty over the intended (logged) shares, so a
+        # partial fill does not overstate P&L.
+        shares = trip.get("qty") or row.get("shares")
         trade_pnl = pnl_ps * shares
         eq_before = row.get("equity_before")
         eq_after = eq_before + trade_pnl if eq_before is not None else None

@@ -68,6 +68,15 @@ Then **System Settings → Users & Groups → Automatically log in as** this use
 so the trigger comes back by itself after a power blip or reboot. (`launchd`
 user agents only run while the user is logged in.)
 
+**Important — FileVault:** if FileVault disk encryption is on (the macOS
+default), the OS **disables auto-login**, so after a reboot the Mac sits at the
+unlock screen, nobody is logged in, and the trigger never runs. For an
+unattended box either (a) turn FileVault off (System Settings → Privacy &
+Security → FileVault), or (b) accept that someone must unlock the Mac after any
+reboot. This is the single most likely silent failure once the Mac is remote —
+and exactly why the independent GitHub-cron health check exists: if the Mac is
+dark, the 9:58 ET watchdog still fires and emails "TRIGGER DID NOT FIRE."
+
 ### 4. Verify
 
 During market hours (09:30–16:00 ET):
