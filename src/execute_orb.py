@@ -133,6 +133,16 @@ def main():
     from src.timeguard import ensure_et_window
     ensure_et_window("09:36", "10:14", "EXECUTE ORB")  # intended 09:40 ET
 
+    # Freshness guard — applies to ALL triggers (incl. the scheduler's
+    # workflow_dispatch). Only enter near the intended window; a late/stale run
+    # skips rather than chase a bad fill. DRY_RUN and FORCE_ENTRY override.
+    hhmm = now.strftime("%H:%M")
+    if (not settings.DRY_RUN and not settings.FORCE_ENTRY
+            and not (settings.ENTRY_WINDOW_START <= hhmm <= settings.ENTRY_WINDOW_END)):
+        print(f"  ET {hhmm} outside entry window {settings.ENTRY_WINDOW_START}-"
+              f"{settings.ENTRY_WINDOW_END} — skipping (stale run; would chase a bad fill).")
+        sys.exit(0)
+
     # Account-level risk pre-check (drawdown / consecutive-loss / daily-loss halts).
     trading_client = get_trading_client()
     equity = get_account_equity(trading_client)
