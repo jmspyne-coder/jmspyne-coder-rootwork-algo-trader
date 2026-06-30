@@ -38,6 +38,11 @@ on:
         required: false
         type: string
         default: 'SPY'
+      slippage_bps:
+        description: 'Backtest per-leg slippage bps (1 = ~3bps round trip default, 3 = ~7bps stress)'
+        required: false
+        type: string
+        default: '1'
 
 concurrency:
   # Serialize identical triggers so two firings can't both act. Combined with the
@@ -105,6 +110,8 @@ jobs:
   backtest:
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.script == 'backtest'
     runs-on: ubuntu-latest
+    env:
+      ALGO_BT_SLIPPAGE_BPS: ${{ github.event.inputs.slippage_bps || '1' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
