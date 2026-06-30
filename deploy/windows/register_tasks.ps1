@@ -25,9 +25,13 @@ if (-not $gh) { throw "gh CLI not found on PATH. Install it and run 'gh auth log
 
 # script -> local CT time
 $jobs = @(
-  @{ Name = "RootworkAlgo-premarket"; Script = "pre_market";  At = "8:25AM" },
-  @{ Name = "RootworkAlgo-execute";   Script = "execute_orb"; At = "8:40AM" },
-  @{ Name = "RootworkAlgo-eod";       Script = "end_of_day";  At = "2:45PM" }
+  @{ Name = "RootworkAlgo-premarket";  Script = "pre_market";   At = "8:25AM" },
+  @{ Name = "RootworkAlgo-execute";    Script = "execute_orb";  At = "8:40AM" },
+  @{ Name = "RootworkAlgo-eod";        Script = "end_of_day";   At = "2:45PM" },
+  # Watchdog at 8:58 CT (9:58 ET): dispatches the health check from the PC too,
+  # so the "TRIGGER DID NOT FIRE" alarm does not depend on GitHub's own cron.
+  # The GitHub-cron health check still runs independently as the PC-off backstop.
+  @{ Name = "RootworkAlgo-healthcheck"; Script = "health_check"; At = "8:58AM" }
 )
 
 foreach ($j in $jobs) {
