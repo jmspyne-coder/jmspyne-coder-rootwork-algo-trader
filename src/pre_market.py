@@ -33,6 +33,16 @@ def main():
         print(f"  ERROR fetching account: {e}")
         sys.exit(1)
 
+    # 1b. Safety: clear any stray/leftover open orders before the session
+    # (e.g. an after-hours test order Alpaca queued for the open).
+    try:
+        from src.alpaca_client import cancel_all_orders
+        canceled = cancel_all_orders(trading_client)
+        if canceled:
+            print(f"  Canceled {len(canceled)} stray open order(s).")
+    except Exception as e:
+        print(f"  Stray-order cancel error (non-fatal): {e}")
+
     # 2. Calculate ATR per symbol (for the notification; sizing happens at execute)
     from datetime import timedelta
     atrs = {}

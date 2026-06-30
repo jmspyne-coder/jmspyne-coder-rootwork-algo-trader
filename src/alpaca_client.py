@@ -142,6 +142,14 @@ def close_all_positions(trading_client: TradingClient | None = None):
     client.close_all_positions(cancel_orders=True)
 
 
+def cancel_all_orders(trading_client: TradingClient | None = None) -> list:
+    """Cancel all open orders; returns the per-order cancel responses. Clears
+    stray/leftover orders (e.g. an after-hours test order queued for the next
+    open) before a session."""
+    client = trading_client or get_trading_client()
+    return client.cancel_orders()
+
+
 def get_todays_orders(trading_client: TradingClient | None = None) -> list:
     """Count filled orders today for max-trades-per-day check."""
     client = trading_client or get_trading_client()
