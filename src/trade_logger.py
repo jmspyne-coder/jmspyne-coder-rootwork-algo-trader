@@ -146,8 +146,12 @@ def write_risk_cache(mode: str, as_of_date: str, state) -> None:
     """Upsert the cached risk-state row for a mode."""
     con = get_connection()
     con.execute(RISK_STATE_DDL)
+    # Delete-then-insert: INSERT OR REPLACE does not dedupe on MotherDuck, so
+    # keep exactly one cache row per mode (avoids read_risk_cache picking a stale
+    # duplicate).
+    con.execute("DELETE FROM algo_risk_state WHERE mode = ?", [mode])
     con.execute(
-        "INSERT OR REPLACE INTO algo_risk_state (mode, as_of_date, peak_equity, "
+        "INSERT INTO algo_risk_state (mode, as_of_date, peak_equity, "
         "current_equity, daily_starting_equity, daily_pnl, consecutive_losses, "
         "trades_today, is_halted, halt_reason, updated_at) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now())",
@@ -275,10 +279,17 @@ def log_daily_summary(
     mode: str = "paper",
     strategy: str = "orb_v2",
 ):
-    """Log end-of-day summary to MotherDuck."""
+    """Log end-of-day summary to MotherDuck. Delete-then-insert keyed on
+    (summary_date, mode): INSERT OR REPLACE does not dedupe on MotherDuck (it
+    does not enforce the PRIMARY KEY the way local DuckDB does), so an explicit
+    delete keeps exactly one row per day per mode."""
     con = get_connection()
+    con.execute(
+        "DELETE FROM algo_daily_summary WHERE summary_date = ? AND mode = ?",
+        [summary_date, mode],
+    )
     con.execute("""
-        INSERT OR REPLACE INTO algo_daily_summary (
+        INSERT INTO algo_daily_summary (
             summary_date, ticker, trades_taken, wins, losses, daily_pnl,
             equity_start, equity_end, max_drawdown_pct, consecutive_losses,
             was_halted, halt_reason, strategy, mode
