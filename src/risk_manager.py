@@ -284,12 +284,20 @@ def record_trade_result(state: RiskState, pnl: float, equity_after: float) -> Ri
 def simulate_risk_controls(
     trades: list[dict],
     initial_capital: float,
+    capital_cap_frac: float | None = None,
 ) -> list[dict]:
     """
     Apply risk controls to a list of backtest trades.
     Returns only the trades that would have been taken,
     plus equity curve data.
+
+    Sizing matches LIVE exactly: risk % of equity, capped at each position's
+    notional slice (equity * capital_cap_frac). capital_cap_frac defaults to
+    1 / N symbols, the same split the live bot uses (no leverage). Uncapped
+    risk-only sizing implied unrealistic leverage and inflated returns.
     """
+    cap_frac = (capital_cap_frac if capital_cap_frac is not None
+                else 1.0 / max(len(settings.TICKERS), 1))
     equity = initial_capital
     peak_equity = initial_capital
     consecutive_losses = 0
@@ -316,11 +324,15 @@ def simulate_risk_controls(
         if drawdown_pct >= settings.MAX_DRAWDOWN_PCT:
             break  # full halt
 
-        # Position sizing
+        # Position sizing — identical to live: risk % of equity, capped at the
+        # per-symbol notional slice (equity * cap_frac). No leverage.
         stop_dist = abs(trade["entry_price"] - trade["stop_price"])
         if stop_dist <= 0:
             continue
-        shares = int((equity * settings.RISK_PER_TRADE_PCT) / stop_dist)
+        shares = calculate_position_size(
+            equity, trade["entry_price"], trade["stop_price"],
+            capital_cap=equity * cap_frac,
+        )
         if shares <= 0:
             continue
 

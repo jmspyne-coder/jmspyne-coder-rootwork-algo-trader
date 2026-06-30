@@ -222,6 +222,7 @@ def generate_signal(
     rvol_threshold: float = None,
     filter_candle: bool = None,
     candle_pct: float = None,
+    entry_cutoff: str | None = None,
 ) -> ORBSignal | None:
     """
     Core signal generator. Scans post-opening-range bars for breakout.
@@ -261,7 +262,15 @@ def generate_signal(
     # Session VWAP base (full session up to force-close cutoff), computed once.
     vwap_series = compute_session_vwap(market_bars)
 
+    # Live runs once near 09:40 and only sees breakouts up to that point. When an
+    # entry_cutoff is given, stop scanning past it so the backtest takes the same
+    # early breakouts the live bot can actually catch (not an all-day first
+    # breakout). None = scan the whole session (for analysis tools).
+    cutoff_t = pd.to_datetime(entry_cutoff).time() if entry_cutoff else None
+
     for idx, row in post_or.iterrows():
+        if cutoff_t is not None and idx.time() > cutoff_t:
+            break
         is_long = row["high"] > orng["or_high"]
         is_short = row["low"] < orng["or_low"]
         if not (is_long or is_short):

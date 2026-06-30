@@ -33,6 +33,11 @@ on:
         required: false
         type: boolean
         default: false
+      ticker:
+        description: 'Ticker for backtest (default SPY)'
+        required: false
+        type: string
+        default: 'SPY'
 
 concurrency:
   # Serialize identical triggers so two firings can't both act. Combined with the
@@ -107,7 +112,7 @@ jobs:
           python-version: '3.12'
           cache: 'pip'
       - run: pip install -r requirements.txt
-      - run: python -m src.backtest --ticker SPY --start 2024-01-01 --end 2026-06-01
+      - run: python -m src.backtest --ticker ${{ github.event.inputs.ticker || 'SPY' }} --start 2024-01-01 --end 2026-06-01
       - uses: actions/upload-artifact@v4
         with:
           name: backtest-results

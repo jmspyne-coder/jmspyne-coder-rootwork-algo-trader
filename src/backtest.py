@@ -32,6 +32,8 @@ def run_backtest(
     rvol_threshold: float = None,
     filter_candle: bool = None,
     candle_pct: float = None,
+    entry_cutoff: str = None,
+    capital_cap_frac: float = None,
 ) -> dict:
     """
     Full backtest pipeline:
@@ -49,10 +51,14 @@ def run_backtest(
     or_minutes = or_minutes or settings.OPENING_RANGE_MINUTES
     rr_ratio = rr_ratio or settings.REWARD_RISK_RATIO
     stop_mode = stop_mode or settings.STOP_MODE
+    entry_cutoff = entry_cutoff if entry_cutoff is not None else settings.BACKTEST_ENTRY_CUTOFF
+    capital_cap_frac = (capital_cap_frac if capital_cap_frac is not None
+                        else settings.BACKTEST_CAPITAL_CAP_FRAC)
 
     print(f"Backtesting {ticker} from {start} to {end}")
     print(f"  ORB window: {or_minutes} min | R:R = {rr_ratio} | Stop: {stop_mode}")
     print(f"  Filters: vwap={filter_vwap} rvol={filter_rvol} candle={filter_candle}")
+    print(f"  Live-fidelity: first breakout by {entry_cutoff} ET | notional cap {capital_cap_frac:.0%} equity/position")
     print(f"  Initial capital: ${initial_capital:,.0f}")
     print(f"  Fetching data from Alpaca...")
 
@@ -98,6 +104,7 @@ def run_backtest(
             rvol_threshold=rvol_threshold,
             filter_candle=filter_candle,
             candle_pct=candle_pct,
+            entry_cutoff=entry_cutoff,
         )
         if signal is None:
             continue
@@ -113,8 +120,8 @@ def run_backtest(
         print("  No trades generated.")
         return {"error": "No trades"}
 
-    # Apply risk controls
-    executed_trades = simulate_risk_controls(raw_trades, initial_capital)
+    # Apply risk controls (live-identical capital-capped sizing)
+    executed_trades = simulate_risk_controls(raw_trades, initial_capital, capital_cap_frac=capital_cap_frac)
     print(f"  Executed (post-risk): {len(executed_trades)}")
 
     # Calculate performance
@@ -132,6 +139,8 @@ def run_backtest(
         "rvol_threshold": rvol_threshold,
         "filter_candle": filter_candle,
         "candle_pct": candle_pct,
+        "entry_cutoff": entry_cutoff,
+        "capital_cap_frac": capital_cap_frac,
     }
     summary["trades"] = executed_trades
 
@@ -292,6 +301,10 @@ def main():
                         help="enable/disable candle-strength filter (default: config)")
     parser.add_argument("--rvol-threshold", type=float, default=None)
     parser.add_argument("--candle-pct", type=float, default=None)
+    parser.add_argument("--entry-cutoff", default=None,
+                        help="ET cutoff for the first breakout, e.g. 09:41 (default: config; '' or 23:59 = all-day)")
+    parser.add_argument("--cap-frac", type=float, default=None,
+                        help="per-position notional cap as fraction of equity (default: 1/N symbols)")
     args = parser.parse_args()
 
     summary = run_backtest(
@@ -307,6 +320,8 @@ def main():
         rvol_threshold=args.rvol_threshold,
         filter_candle=args.candle,
         candle_pct=args.candle_pct,
+        entry_cutoff=args.entry_cutoff,
+        capital_cap_frac=args.cap_frac,
     )
     print_summary(summary)
 

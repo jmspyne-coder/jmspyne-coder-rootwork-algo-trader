@@ -118,6 +118,21 @@ BACKTEST_START = os.getenv("ALGO_BT_START", "2024-01-01")
 BACKTEST_END = os.getenv("ALGO_BT_END", "2026-06-01")
 BACKTEST_INITIAL_CAPITAL = float(os.getenv("ALGO_BT_CAPITAL", "10000"))
 
+# ─── Backtest fidelity to LIVE execution ─────────────────────────────
+# The backtest must describe what the live bot will actually do, or its
+# returns are fiction. Two gaps the audit found:
+#  - Timing: the live bot runs ONCE at ~09:40 and only takes a breakout it can
+#    see by then, so the backtest only counts the first breakout at/under this
+#    ET cutoff. All-day scanning counted trades live never takes.
+#  - Sizing: the live bot caps each position's notional at equity / N symbols
+#    (no leverage), so the backtest caps the same way. Uncapped (risk-only)
+#    sizing implied unrealistic leverage and hugely inflated returns. This is
+#    the single biggest backtest-vs-live fidelity gap.
+BACKTEST_ENTRY_CUTOFF = os.getenv("ALGO_BT_ENTRY_CUTOFF", "09:41")
+BACKTEST_CAPITAL_CAP_FRAC = float(
+    os.getenv("ALGO_BT_CAP_FRAC", str(round(1.0 / max(len(TICKERS), 1), 4)))
+)
+
 # ─── Transaction Costs (backtest realism) ─────────────────────────────
 # A round trip is two fills (entry + exit). Each leg pays slippage plus
 # half the bid/ask spread, in basis points of price, plus a flat
