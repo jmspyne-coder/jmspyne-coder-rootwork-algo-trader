@@ -81,6 +81,32 @@ def main():
     else:
         print("  No open positions.")
 
+    # Flat verification: a carried-overnight position is a critical failure. If
+    # anything is STILL open after the close+settle, force it flat and alarm.
+    try:
+        residual = get_open_positions(trading_client)
+    except Exception as e:
+        residual = []
+        print(f"  Flat-check could not list positions ({e}).")
+    if residual:
+        syms = ", ".join(f"{p.symbol}({p.qty})" for p in residual)
+        print(f"  NOT FLAT after cleanup: {syms} — forcing close again.")
+        try:
+            close_all_positions(trading_client)
+            time.sleep(5)
+        except Exception as e:
+            print(f"  Second force-close failed: {e}")
+        still = []
+        try:
+            still = get_open_positions(trading_client)
+        except Exception:
+            pass
+        send_notification(
+            f"*EOD NOT FLAT* residual after cleanup: {syms}. "
+            + ("STILL OPEN after retry — CLOSE MANUALLY NOW." if still
+               else "Second close cleared it; verify the account."),
+            ":rotating_light:")
+
     # 2. Final equity.
     try:
         equity = get_account_equity(trading_client)
@@ -153,6 +179,13 @@ def main():
 
     # 7. Notify + email (email shows reconciled round trips, not just force-closed).
     trades = get_todays_trades(today_str, mode)
+    # Paper-trading dashboard (Day N of 60, realized slippage). Best-effort.
+    paper = None
+    try:
+        from src.paper_stats import get_paper_dashboard
+        paper = get_paper_dashboard(mode)
+    except Exception as e:
+        print(f"  Paper dashboard skipped (non-fatal): {e}")
     notify_daily_summary(today_str, trades_taken, wins, losses, daily_pnl, equity, drawdown)
     send_daily_email(
         date=today_str, ticker=",".join(settings.TICKERS),
@@ -160,6 +193,7 @@ def main():
         daily_pnl=round(daily_pnl, 2), equity_start=starting_equity, equity_end=equity,
         drawdown_pct=drawdown, trades=trades,
         was_halted=state.is_halted, halt_reason=state.halt_reason, mode=mode,
+        paper=paper,
     )
 
     heartbeat("ok", f"{trades_taken} trades, P&L ${daily_pnl:+.2f}")

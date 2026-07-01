@@ -1,0 +1,109 @@
+{
+  "meta": {
+    "period": "2024-01-01 to 2026-06-01",
+    "capital": 10000.0,
+    "generated_utc": "2026-07-01T03:59:53.364950+00:00"
+  },
+  "kill_level_bps": {
+    "SPY": 22.5,
+    "QQQ": 28.0
+  },
+  "lag1_autocorr": {
+    "SPY": 0.0997,
+    "QQQ": 0.062
+  },
+  "slippage_cliff": {
+    "SPY": {
+      "0": 3.055,
+      "3": 2.646,
+      "5": 2.373,
+      "7": 2.1,
+      "10": 1.691,
+      "15": 1.011,
+      "20": 0.333,
+      "25": -0.342,
+      "30": -1.013,
+      "35": -1.68,
+      "40": -2.342
+    },
+    "QQQ": {
+      "0": 4.266,
+      "3": 3.813,
+      "5": 3.511,
+      "7": 3.207,
+      "10": 2.752,
+      "15": 1.989,
+      "20": 1.224,
+      "25": 0.458,
+      "30": -0.31,
+      "35": -1.079,
+      "40": -1.848
+    }
+  },
+  "dsr_sensitivity": [
+    {
+      "ticker": "SPY",
+      "trials": 18,
+      "dsr_prob": 0.247,
+      "gross_sharpe": 3.055,
+      "net3_sharpe": 2.646,
+      "net3_pct_of_gross": 0.8661
+    },
+    {
+      "ticker": "SPY",
+      "trials": 30,
+      "dsr_prob": 0.1831,
+      "gross_sharpe": 3.055,
+      "net3_sharpe": 2.646,
+      "net3_pct_of_gross": 0.8661
+    },
+    {
+      "ticker": "SPY",
+      "trials": 50,
+      "dsr_prob": 0.1343,
+      "gross_sharpe": 3.055,
+      "net3_sharpe": 2.646,
+      "net3_pct_of_gross": 0.8661
+    },
+    {
+      "ticker": "SPY",
+      "trials": 100,
+      "dsr_prob": 0.0868,
+      "gross_sharpe": 3.055,
+      "net3_sharpe": 2.646,
+      "net3_pct_of_gross": 0.8661
+    },
+    {
+      "ticker": "QQQ",
+      "trials": 18,
+      "dsr_prob": 0.9241,
+      "gross_sharpe": 4.266,
+      "net3_sharpe": 3.813,
+      "net3_pct_of_gross": 0.8938
+    },
+    {
+      "ticker": "QQQ",
+      "trials": 30,
+      "dsr_prob": 0.8876,
+      "gross_sharpe": 4.266,
+      "net3_sharpe": 3.813,
+      "net3_pct_of_gross": 0.8938
+    },
+    {
+      "ticker": "QQQ",
+      "trials": 50,
+      "dsr_prob": 0.8439,
+      "gross_sharpe": 4.266,
+      "net3_sharpe": 3.813,
+      "net3_pct_of_gross": 0.8938
+    },
+    {
+      "ticker": "QQQ",
+      "trials": 100,
+      "dsr_prob": 0.7753,
+      "gross_sharpe": 4.266,
+      "net3_sharpe": 3.813,
+      "net3_pct_of_gross": 0.8938
+    }
+  ]
+}

@@ -116,12 +116,14 @@ def fetch_daily_history(mode: str) -> list[dict]:
     derived cross-day risk quantities (peak equity, consecutive losing days)."""
     con = get_connection()
     rows = con.execute(
-        "SELECT summary_date, SUM(daily_pnl) AS daily_pnl, MAX(equity_end) AS equity_end "
+        "SELECT summary_date, SUM(daily_pnl) AS daily_pnl, MAX(equity_end) AS equity_end, "
+        "MAX(halt_reason) AS halt_reason "
         "FROM algo_daily_summary WHERE mode = ? GROUP BY summary_date ORDER BY summary_date",
         [mode],
     ).fetchall()
     con.close()
-    return [{"summary_date": r[0], "daily_pnl": r[1], "equity_end": r[2]} for r in rows]
+    return [{"summary_date": r[0], "daily_pnl": r[1], "equity_end": r[2], "halt_reason": r[3]}
+            for r in rows]
 
 
 def read_risk_cache(mode: str) -> dict | None:

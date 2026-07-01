@@ -316,6 +316,29 @@ def submit_bracket_order(
     return client.submit_order(order_data=MarketOrderRequest(**kwargs))
 
 
+def verify_bracket_legs(order) -> tuple[bool, str]:
+    """A bracket order should carry two child legs (take-profit + stop-loss).
+    Returns (ok, detail). Used right after submit to catch an orphaned entry —
+    an entry accepted without its protective legs. Alpaca returns the children
+    under `.legs` for order_class='bracket'."""
+    legs = getattr(order, "legs", None) or []
+    n = len(legs)
+    if n >= 2:
+        return True, f"{n} protective legs attached"
+    return False, f"only {n} bracket leg(s) attached — entry may be UNPROTECTED"
+
+
+def flatten_symbol(ticker: str, trading_client: TradingClient | None = None):
+    """Cancel working orders for a symbol and market-close its position. Used to
+    neutralize an orphaned/unprotected entry or a stuck EOD position."""
+    client = trading_client or get_trading_client()
+    try:
+        client.cancel_orders()
+    except Exception as e:
+        print(f"  [flatten] cancel_orders warning: {e}")
+    return client.close_position(ticker)
+
+
 def submit_market_order(
     ticker: str,
     side: str,

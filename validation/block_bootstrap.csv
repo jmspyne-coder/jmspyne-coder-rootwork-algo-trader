@@ -1,0 +1,5 @@
+ticker,method,block,ci_lo,ci_hi,median,p_sharpe_le_0
+SPY,iid,,-2.05,7.17,2.75,0.1262
+SPY,block,5,-1.57,6.61,3.02,0.0911
+QQQ,iid,,1.51,6.11,3.83,0.0005
+QQQ,block,5,1.58,6.01,3.81,0.0009

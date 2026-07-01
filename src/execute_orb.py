@@ -22,7 +22,7 @@ import pytz
 from src.alpaca_client import (
     get_data_client, get_trading_client,
     fetch_intraday_bars, fetch_daily_bars,
-    get_account_equity, submit_bracket_order,
+    get_account_equity, submit_bracket_order, verify_bracket_legs,
     has_order_today, count_todays_orders, get_market_session_today,
 )
 from src.orb_signal import generate_signal, calculate_atr
@@ -161,6 +161,15 @@ def trade_symbol(ticker, equity, capital_cap, data_client, trading_client, today
         print(f"  [{ticker}] order {order.id} ({order.status})")
         notify_trade_entry(ticker, signal.direction, shares,
                            signal.entry_price, signal.stop_price, signal.target_price)
+        # Orphan-leg guard: a bracket must carry its stop + target legs. If they
+        # are missing the entry could fill unprotected — alarm loudly so it is
+        # caught this run (EOD/reconcile also force-flatten as a backstop).
+        legs_ok, legs_detail = verify_bracket_legs(order)
+        if not legs_ok:
+            print(f"  [{ticker}] BRACKET LEG WARNING: {legs_detail}")
+            send_notification(
+                f"*BRACKET LEG FAILURE* `{ticker}`: {legs_detail}. Entry may be "
+                f"unprotected — verify stop/target on the account NOW.", ":rotating_light:")
     except Exception as e:
         msg = str(e)
         if "client_order_id" in msg.lower() or "duplicate" in msg.lower():

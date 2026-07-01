@@ -12,7 +12,9 @@ from datetime import datetime
 from src.reconcile import reconstruct_round_trips, match_exits
 from src.risk_manager import (
     compute_history_state, can_trade, calculate_position_size, RiskState,
+    consec_loss_pause_active,
 )
+from src.alpaca_client import verify_bracket_legs
 from src.orb_signal import compute_opening_range, generate_signal
 from src.execute_orb import _age_min, _drop_forming_bar
 
@@ -101,6 +103,58 @@ def test_can_trade_blocked_by_daily_floor():
                    is_halted=True, halt_reason="daily_floor_breach")
     ok, reason = can_trade(st)
     assert not ok and "daily_floor_breach" in reason
+
+
+# ─── consecutive-loss pause (2 trading days) ─────────────────────────
+def test_consec_loss_pause_active_window():
+    # A consecutive_losses halt on the last day keeps the pause active.
+    hist = [
+        {"summary_date": "d1", "halt_reason": None},
+        {"summary_date": "d2", "halt_reason": "consecutive_losses"},
+    ]
+    assert consec_loss_pause_active(hist, pause_days=2) is True
+    # Two clean days after the halt -> pause has expired.
+    hist2 = hist + [
+        {"summary_date": "d3", "halt_reason": "consec_loss_pause"},
+        {"summary_date": "d4", "halt_reason": None},
+    ]
+    assert consec_loss_pause_active(hist2, pause_days=2) is False
+    assert consec_loss_pause_active([], pause_days=2) is False
+    assert consec_loss_pause_active(hist, pause_days=0) is False
+
+
+# ─── orphaned-leg guard ──────────────────────────────────────────────
+class _FakeOrder:
+    def __init__(self, legs):
+        self.legs = legs
+
+
+def test_verify_bracket_legs():
+    ok, _ = verify_bracket_legs(_FakeOrder(["tp", "sl"]))
+    assert ok
+    bad, detail = verify_bracket_legs(_FakeOrder([]))
+    assert not bad and "UNPROTECTED" in detail
+    none_legs, _ = verify_bracket_legs(_FakeOrder(None))
+    assert not none_legs
+
+
+# ─── paper-trading slippage tracker ──────────────────────────────────
+def test_realized_slippage_bps():
+    from src.paper_stats import realized_slippage_bps, summarize
+    # Long filled 10 bps above the intended breakout = 10 bps cost.
+    assert round(realized_slippage_bps("long", 100.0, 100.10), 1) == 10.0
+    # Short filled below intended = positive cost; price improvement = negative.
+    assert round(realized_slippage_bps("short", 100.0, 99.90), 1) == 10.0
+    assert round(realized_slippage_bps("long", 100.0, 99.95), 1) == -5.0
+    assert realized_slippage_bps("long", 0, 100) is None
+    s = summarize([
+        {"direction": "long", "or_high": 100.0, "or_low": 99.0, "entry_price": 100.10,
+         "trade_pnl": 20.0, "trade_date": "d1"},
+        {"direction": "short", "or_high": 51.0, "or_low": 50.0, "entry_price": 49.95,
+         "trade_pnl": -10.0, "trade_date": "d2"},
+    ])
+    assert s["trades"] == 2 and s["days_traded"] == 2
+    assert s["cum_pnl"] == 10.0 and s["avg_slippage_bps"] == 10.0
 
 
 # ─── intraday risk monitor (daily-loss bumper) ───────────────────────

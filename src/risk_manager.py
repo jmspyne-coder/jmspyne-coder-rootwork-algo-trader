@@ -71,6 +71,21 @@ def compute_history_state(history: list[dict]) -> tuple[float, int]:
     return peak, consec
 
 
+def consec_loss_pause_active(history: list[dict], pause_days: int) -> bool:
+    """True if a consecutive-loss halt occurred within the last `pause_days`
+    trading days, so trading should stay paused.
+
+    When the streak halt fires on day D, EOD records that day's summary with
+    halt_reason 'consecutive_losses'. This keeps trading paused for the next
+    `pause_days` sessions: while any of the last `pause_days` history rows still
+    carries that reason, the pause holds, then it auto-clears.
+    """
+    if pause_days <= 0 or not history:
+        return False
+    recent = history[-pause_days:]
+    return any(h.get("halt_reason") == "consecutive_losses" for h in recent)
+
+
 def _fetch_state_with_retry(mode: str, attempts: int = 3):
     """Read history + cache from MotherDuck with a bounded retry, so a single
     transient blip does not burn the whole trading day by failing closed."""
@@ -142,6 +157,12 @@ def load_risk_state(equity: float | None = None, mode: str | None = None) -> Ris
         daily_starting = prior_equity_end if prior_equity_end is not None else eq
         daily_pnl, trades_today = 0.0, 0
         is_halted, halt_reason = False, None
+
+    # Consecutive-loss pause: after a 5-losing-day halt, stay paused for
+    # CONSEC_LOSS_PAUSE_DAYS trading days, then auto-resume. Derived from history
+    # so it needs no extra state. Does not override a same-day halt already set.
+    if not is_halted and consec_loss_pause_active(history, settings.CONSEC_LOSS_PAUSE_DAYS):
+        is_halted, halt_reason = True, "consec_loss_pause"
 
     # Sticky drawdown latch: a max-drawdown halt requires manual review and must
     # NOT auto-clear overnight, so carry it regardless of the cache date.

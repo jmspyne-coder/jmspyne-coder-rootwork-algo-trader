@@ -32,6 +32,7 @@ on:
           - risk_monitor
           - halt_now
           - resume_trading
+          - paper_report
           - abtest
           - driftcheck
           - validate
@@ -71,6 +72,9 @@ env:
   ALGO_MAX_DAILY_LOSS: '0.03'    # hard daily stop (flatten + halt for the day, auto-resumes)
   ALGO_DAILY_LOSS_WARN: '0.0225' # early-warning email at 3/4 of the hard stop
   ALGO_DAILY_FLOOR: '0.50'       # catastrophic floor (flatten + STICKY halt, manual resume)
+  ALGO_MAX_CONSEC_LOSSES: '5'    # consecutive losing days before a pause
+  ALGO_CONSEC_PAUSE_DAYS: '2'    # trading-day pause after a consec-loss halt (auto-resume)
+  ALGO_MAX_DRAWDOWN: '0.10'      # peak-to-current drawdown: STICKY halt (manual resume)
   DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}  # true only on a manual dry-run dispatch
   GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
   GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
@@ -239,6 +243,19 @@ jobs:
           cache: 'pip'
       - run: pip install -r requirements.txt
       - run: python -m src.killswitch resume
+
+  paper-report:
+    # Print the paper-trading dashboard (Day N of 60, realized slippage, paper Sharpe).
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.script == 'paper_report'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - run: python -m src.paper_stats
 
   abtest:
     # Config A/B (baseline vs regime gate vs close-confirmed) + statistical

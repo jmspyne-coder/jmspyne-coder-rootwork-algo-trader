@@ -129,9 +129,33 @@ DAILY_LOSS_WARN_PCT = float(os.getenv("ALGO_DAILY_LOSS_WARN", "0.0225"))  # 2.25
 # than half of the day's starting capital in one day. When live with a set
 # per-day trade amount, point this at that amount instead of total equity.
 MAX_DAILY_LOSS_ABS_PCT = float(os.getenv("ALGO_DAILY_FLOOR", "0.50"))  # 50%
-MAX_CONSECUTIVE_LOSSES = int(os.getenv("ALGO_MAX_CONSEC_LOSSES", "3"))
-MAX_DRAWDOWN_PCT = float(os.getenv("ALGO_MAX_DRAWDOWN", "0.12"))       # 12%
+# Consecutive LOSING DAYS before a pause. On breach, trading pauses for
+# CONSEC_LOSS_PAUSE_DAYS trading days, then auto-resumes.
+MAX_CONSECUTIVE_LOSSES = int(os.getenv("ALGO_MAX_CONSEC_LOSSES", "5"))
+CONSEC_LOSS_PAUSE_DAYS = int(os.getenv("ALGO_CONSEC_PAUSE_DAYS", "2"))
+# Max peak-to-current drawdown. Sticky latch: stops all trading and requires a
+# manual resume (killswitch resume) — the "don't lose my ass" backstop. At
+# $2,000 starting capital, 10% is a $200 max loss before the system stops itself.
+MAX_DRAWDOWN_PCT = float(os.getenv("ALGO_MAX_DRAWDOWN", "0.10"))       # 10%
 MAX_TRADES_PER_DAY = int(os.getenv("ALGO_MAX_TRADES_DAY", "2"))
+
+# ─── Live account ────────────────────────────────────────────────────
+# Live position sizing pulls CURRENT account equity from Alpaca each morning
+# (src/execute_orb) and compounds; nothing here is hardcoded into live sizing.
+# This is a reference for docs/sizing only. Margin account, $2,000 start
+# (post-PDT-elimination, 2026-06-04). Orders are WHOLE-share brackets: Alpaca
+# does NOT support stop/target legs on fractional-share orders, so fractional
+# sizing is intentionally OFF (a bracket needs whole shares).
+LIVE_STARTING_CAPITAL = float(os.getenv("ALGO_LIVE_CAPITAL", "2000"))
+FRACTIONAL_SHARES = False  # incompatible with bracket orders on Alpaca; see docs
+
+# ─── Paper-trading tracker (C4) ──────────────────────────────────────
+# Minimum paper period before considering live. The daily email shows a Day N of
+# TARGET dashboard with cumulative P&L, realized slippage, and paper Sharpe vs
+# the backtest reference. Set ALGO_PAPER_START to the first paper day (ISO date).
+PAPER_TRADING_START = os.getenv("ALGO_PAPER_START", "")  # e.g. "2026-07-01"
+PAPER_TRADING_DAYS = int(os.getenv("ALGO_PAPER_DAYS", "60"))
+PAPER_BACKTEST_SHARPE_REF = float(os.getenv("ALGO_PAPER_BT_SHARPE", "3.81"))  # QQQ net@3bps
 
 # ─── Schedule (ET) ───────────────────────────────────────────────────
 MARKET_OPEN = "09:30"

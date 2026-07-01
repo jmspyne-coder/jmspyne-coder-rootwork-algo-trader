@@ -111,6 +111,7 @@ def send_daily_email(
     was_halted: bool = False,
     halt_reason: str = None,
     mode: str = "paper",
+    paper: dict = None,
 ):
     """Send formatted daily summary email. `trades` are the reconciled round
     trips for the day (entry/exit/P&L/reason), so the email reflects what
@@ -137,6 +138,23 @@ def send_daily_email(
                 <td style="padding:8px;border-bottom:1px solid #333;">{detail}</td>
                 <td style="padding:8px;border-bottom:1px solid #333;color:{row_color};">${tp:+,.2f}</td>
             </tr>"""
+
+    paper_section = ""
+    if paper:
+        slip = paper.get("avg_slippage_bps")
+        slip_str = f"{slip:.1f} bps" if slip is not None else "n/a"
+        paper_section = f"""
+        <div style="background:#111827;border:1px solid #334155;border-radius:8px;padding:12px;margin:16px 0;">
+            <div style="color:#a0a0a0;font-size:12px;text-transform:uppercase;margin-bottom:6px;">
+                Paper trading — Day {paper.get('day_n','?')} of {paper.get('target_days','?')}</div>
+            <div style="font-size:13px;line-height:1.6;">
+                Cumulative P&L: <strong>${paper.get('cum_pnl',0):+,.2f}</strong> &nbsp;|&nbsp;
+                Trades: {paper.get('trades',0)} &nbsp;|&nbsp;
+                Avg realized slippage: <strong>{slip_str}</strong><br>
+                Paper Sharpe: <strong>{paper.get('paper_sharpe','?')}</strong>
+                vs backtest ref {paper.get('backtest_sharpe_ref','?')}
+            </div>
+        </div>"""
 
     halt_section = ""
     if was_halted:
@@ -190,6 +208,8 @@ def send_daily_email(
                 </tr>
             </table>
 
+            {paper_section}
+
             {halt_section}
 
             {f'''<h3 style="color:#a0a0a0;font-size:13px;text-transform:uppercase;margin:20px 0 8px;">Trades</h3>
@@ -220,17 +240,27 @@ def notify_risk_halt(reason):
 
     # Tailor the guidance to the halt reason so the email is actionable.
     r = reason or ""
-    if "risk_state_unavailable" in r:
-        guidance = ("Could not read risk state from MotherDuck — likely the "
-                    "MOTHERDUCK_TOKEN secret or DB connectivity. The bot fails "
-                    "closed and will not trade until this is resolved.")
+    if "risk_state_unavailable" in r or "equity_unavailable" in r:
+        guidance = ("Could not read risk state / equity — likely the "
+                    "MOTHERDUCK_TOKEN secret or DB/broker connectivity. The bot "
+                    "fails closed and will not trade until this is resolved.")
     elif "max_drawdown" in r:
-        guidance = ("Max drawdown limit hit. This needs manual account review "
-                    "before trading resumes — it does not auto-clear.")
+        guidance = ("Max drawdown limit hit (-10% from peak). Needs manual "
+                    "account review before trading resumes — it does not "
+                    "auto-clear. Run resume_trading when ready.")
+    elif "daily_floor_breach" in r:
+        guidance = ("Catastrophic daily floor hit — positions were flattened. "
+                    "STICKY halt: does not auto-clear. Review, then run "
+                    "resume_trading.")
+    elif "manual_kill" in r:
+        guidance = ("Manual kill switch is engaged. Trading stays stopped until "
+                    "you run resume_trading.")
+    elif "consec_loss_pause" in r or "consecutive_losses" in r:
+        guidance = ("Consecutive-loss pause (5 losing days). Trading pauses for "
+                    "2 trading days, then auto-resumes.")
     else:
-        guidance = ("Daily safety halt (daily-loss / consecutive-loss / "
-                    "max-trades). This clears automatically on the next "
-                    "trading day.")
+        guidance = ("Daily safety halt (daily-loss / max-trades). This clears "
+                    "automatically on the next trading day.")
 
     # Also email on halts — these are important
     send_email(
