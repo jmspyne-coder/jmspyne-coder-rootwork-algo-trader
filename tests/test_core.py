@@ -342,6 +342,24 @@ def test_leakfinder_gap_bucket():
     assert _bucket_gap(None).startswith("n/a")
 
 
+def test_leakfinder_atr_vol_bucket():
+    from src.leakfinder import _bucket_atr
+    assert _bucket_atr({"atr": 3.0, "entry_price": 400.0}).startswith("a. low")   # 0.75%
+    assert _bucket_atr({"atr": 6.0, "entry_price": 400.0}).startswith("b. normal")  # 1.5%
+    assert _bucket_atr({"atr": 10.0, "entry_price": 400.0}).startswith("c. high")  # 2.5%
+    assert _bucket_atr({"atr": None, "entry_price": 400.0}) == "?"
+
+
+def test_withdrawal_should_sweep():
+    from src.withdrawal import should_sweep
+    # $6.5k on a $5k base, 20% threshold -> above $6k, sweep 50% of $1.5k excess.
+    r = should_sweep(6500.0, 5000.0, 0.20, 0.50)
+    assert r["trigger"] and r["threshold"] == 6000.0 and r["sweep"] == 750.0
+    # Just under threshold -> no sweep.
+    assert should_sweep(5900.0, 5000.0, 0.20, 0.50)["trigger"] is False
+    assert should_sweep(6500.0, 0.0, 0.20, 0.50)["trigger"] is False  # degenerate base
+
+
 # ─── live freshness guards ────────────────────────────────────────────
 def test_drop_forming_bar():
     et = pytz.timezone("US/Eastern")

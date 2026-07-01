@@ -37,6 +37,7 @@ def init_tables():
             or_low          DOUBLE,
             range_pct       DOUBLE,
             atr             DOUBLE,
+            gap_pct         DOUBLE,        -- overnight gap (today open vs prior close)
             equity_before   DOUBLE,
             equity_after    DOUBLE,
             vwap_at_entry   DOUBLE,        -- v2 confirmation-filter telemetry
@@ -175,6 +176,7 @@ def migrate_tables():
     con.execute("ALTER TABLE algo_trade_log ADD COLUMN IF NOT EXISTS rvol_at_entry DOUBLE;")
     con.execute("ALTER TABLE algo_trade_log ADD COLUMN IF NOT EXISTS candle_strength DOUBLE;")
     con.execute("ALTER TABLE algo_trade_log ADD COLUMN IF NOT EXISTS filters_passed VARCHAR;")
+    con.execute("ALTER TABLE algo_trade_log ADD COLUMN IF NOT EXISTS gap_pct DOUBLE;")
     con.execute("ALTER TABLE algo_trade_log ALTER COLUMN strategy SET DEFAULT 'orb_v2';")
     con.close()
 
@@ -197,6 +199,7 @@ def log_trade(
     or_low: float | None = None,
     range_pct: float | None = None,
     atr: float | None = None,
+    gap_pct: float | None = None,
     equity_before: float | None = None,
     equity_after: float | None = None,
     vwap_at_entry: float | None = None,
@@ -220,15 +223,15 @@ def log_trade(
             trade_date, ticker, direction, entry_price, stop_price,
             target_price, exit_price, shares, pnl_per_share, trade_pnl,
             exit_reason, entry_time, exit_time, or_high, or_low,
-            range_pct, atr, equity_before, equity_after,
+            range_pct, atr, gap_pct, equity_before, equity_after,
             vwap_at_entry, rvol_at_entry, candle_strength, filters_passed,
             strategy, mode
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, [
         trade_date, ticker, direction, entry_price, stop_price,
         target_price, exit_price, shares, pnl_per_share, trade_pnl,
         exit_reason, entry_time, exit_time, or_high, or_low,
-        range_pct, atr, equity_before, equity_after,
+        range_pct, atr, gap_pct, equity_before, equity_after,
         vwap_at_entry, rvol_at_entry, candle_strength, filters_passed,
         strategy, mode,
     ])

@@ -14,6 +14,7 @@ on:
     - cron: '58 13 * * 1-5'   # health check 09:58 ET (EDT) — independent watchdog
     - cron: '58 14 * * 1-5'   # health check 09:58 ET (EST)
     - cron: '*/30 13-20 * * 1-5'  # intraday risk monitor every 30 min (ET-guarded to 10:00-15:35)
+    - cron: '0 21 * * 5'          # weekly report Friday ~16:00-17:00 ET (after close)
   workflow_dispatch:
     inputs:
       script:
@@ -35,6 +36,8 @@ on:
           - paper_report
           - leak_report
           - pnl_calendar
+          - weekly_report
+          - withdrawal
           - abtest
           - driftcheck
           - validate
@@ -288,6 +291,35 @@ jobs:
           cache: 'pip'
       - run: pip install -r requirements.txt
       - run: python -m src.pnl_calendar --mode paper
+
+  weekly-report:
+    # Friday-after-close digest (P&L calendar + leak finder + paper dashboard),
+    # emailed. Also runnable on demand.
+    if: >
+      (github.event_name == 'schedule' && github.event.schedule == '0 21 * * 5') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.script == 'weekly_report')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - run: python -m src.weekly_report
+
+  withdrawal:
+    # Recommend-only profit sweep (OFF unless ALGO_WITHDRAWAL_ENABLED=true).
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.script == 'withdrawal'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - run: python -m src.withdrawal
 
   abtest:
     # Config A/B (baseline vs regime gate vs close-confirmed) + statistical

@@ -179,6 +179,16 @@ def trade_symbol(ticker, equity, capital_cap, data_client, trading_client, today
         send_notification(f"*ORDER ERROR* `{ticker}`: {e}", ":rotating_light:")
         return {"placed": 0, "status": "order_error", "detail": msg}
 
+    # Overnight gap (today's open vs prior close) for post-hoc leak analysis.
+    # Best-effort: computed off data already in hand; never blocks logging/entry.
+    gap_pct = None
+    try:
+        mkt = intraday.between_time("09:30", "09:59")
+        if prev_close and not mkt.empty:
+            gap_pct = (float(mkt.iloc[0]["open"]) - prev_close) / prev_close
+    except Exception:
+        gap_pct = None
+
     # Log the entry. If this fails the order is still live — alert loudly so the
     # book gets reconciled by hand rather than silently desyncing.
     try:
@@ -187,7 +197,7 @@ def trade_symbol(ticker, equity, capital_cap, data_client, trading_client, today
             entry_price=signal.entry_price, stop_price=signal.stop_price,
             target_price=signal.target_price, shares=shares, entry_time=signal.timestamp,
             exit_reason="open", or_high=signal.or_high, or_low=signal.or_low,
-            range_pct=signal.range_pct, atr=signal.atr, equity_before=equity,
+            range_pct=signal.range_pct, atr=signal.atr, gap_pct=gap_pct, equity_before=equity,
             vwap_at_entry=signal.vwap_at_entry, rvol_at_entry=signal.rvol_at_entry,
             candle_strength=signal.candle_strength, filters_passed=signal.filters_passed,
             strategy="orb_v2", mode="paper" if settings.ALPACA_PAPER else "live",

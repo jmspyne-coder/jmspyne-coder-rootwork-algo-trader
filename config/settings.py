@@ -196,6 +196,17 @@ PAPER_BACKTEST_SHARPE_REF = float(os.getenv("ALGO_PAPER_BT_SHARPE", "3.81"))  # 
 PAPER_SIMULATED_EQUITY = float(os.getenv("ALGO_PAPER_SIM_EQUITY", "5000"))
 PAPER_ACCOUNT_BASELINE = float(os.getenv("ALGO_PAPER_BASELINE", "100000"))
 
+# ─── Withdrawal discipline (D6) ──────────────────────────────────────
+# When effective equity exceeds the base by WITHDRAWAL_EXCESS_PCT, recommend
+# sweeping WITHDRAWAL_SWEEP_FRAC of the excess to a non-trading account (prevents
+# the "let it ride" failure mode). OFF and RECOMMEND-ONLY by design: the system
+# never moves money automatically — it emails the recommended amount for a manual
+# transfer. Turn on only after the account is live and profitable.
+WITHDRAWAL_ENABLED = os.getenv("ALGO_WITHDRAWAL_ENABLED", "false").lower() == "true"
+WITHDRAWAL_BASE_CAPITAL = float(os.getenv("ALGO_WITHDRAWAL_BASE", "5000"))
+WITHDRAWAL_EXCESS_PCT = float(os.getenv("ALGO_WITHDRAWAL_EXCESS", "0.20"))   # >20% over base
+WITHDRAWAL_SWEEP_FRAC = float(os.getenv("ALGO_WITHDRAWAL_SWEEP", "0.50"))    # sweep 50% of excess
+
 # ─── Schedule (ET) ───────────────────────────────────────────────────
 MARKET_OPEN = "09:30"
 ORB_SIGNAL_TIME = "09:35"

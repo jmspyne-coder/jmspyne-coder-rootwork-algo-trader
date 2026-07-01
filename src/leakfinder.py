@@ -38,14 +38,19 @@ def from_motherduck(mode):
     from src.trade_logger import get_connection
     con = get_connection()
     rows = con.execute(
-        "SELECT ticker, trade_date, direction, entry_time, trade_pnl, exit_reason, "
-        "range_pct, atr, candle_strength FROM algo_trade_log "
+        "SELECT ticker, trade_date, direction, entry_time, entry_price, trade_pnl, "
+        "exit_reason, range_pct, atr, gap_pct, candle_strength FROM algo_trade_log "
         "WHERE mode = ? AND trade_pnl IS NOT NULL AND exit_reason <> 'open'",
         [mode],
     ).fetch_df()
     con.close()
     trades = rows.to_dict("records")
-    attach_gaps(trades)  # analysis-time gap size (no live-path/schema change needed)
+    # Prefer the gap logged at entry; fall back to analysis-time computation for
+    # any trade missing it (older rows logged before gap_pct existed).
+    for t in trades:
+        g = t.get("gap_pct")
+        t["_gap"] = abs(g) if g is not None else None
+    attach_gaps(trades)
     return trades
 
 
@@ -78,8 +83,10 @@ def attach_gaps(trades):
                     gap_of[(tk, d)] = (float(row["open"]) - prev) / prev
                 prev = float(row["close"])
         for t in trades:
-            t["_gap"] = abs(gap_of.get((t.get("ticker"), str(t["trade_date"])[:10]), None)
-                            ) if (t.get("ticker"), str(t.get("trade_date"))[:10]) in gap_of else None
+            if t.get("_gap") is not None:
+                continue  # already have the logged gap
+            key = (t.get("ticker"), str(t.get("trade_date"))[:10])
+            t["_gap"] = abs(gap_of[key]) if key in gap_of else None
     except Exception as e:
         print(f"  [leakfinder] gap attach skipped (non-fatal): {e}")
 
@@ -104,6 +111,21 @@ def _bucket_gap(g):
     if g < 0.007:
         return "b. 0.3-0.7%"
     return "c. >0.7%"
+
+
+def _bucket_atr(t):
+    """Volatility-regime bucket = ATR as % of entry price. Stands in for a VIX
+    bucket: Alpaca's feed does not carry VIX, and daily ATR% is the realized-vol
+    regime the trade actually opened into (low/normal/high)."""
+    atr, price = t.get("atr"), t.get("entry_price")
+    if not atr or not price:
+        return "?"
+    pct = atr / price
+    if pct < 0.010:
+        return "a. low vol (<1% ATR)"
+    if pct < 0.018:
+        return "b. normal (1-1.8%)"
+    return "c. high vol (>1.8%)"
 
 
 def _bucket_candle(c):
@@ -161,6 +183,8 @@ def analyze(trades):
     _print_dim("By opening-range size", _agg(trades, lambda t: _bucket_range(t.get("range_pct"))))
     if any(t.get("_gap") is not None for t in trades):
         _print_dim("By gap size at open", _agg(trades, lambda t: _bucket_gap(t.get("_gap"))), sort_by_pnl=True)
+    if any(t.get("atr") and t.get("entry_price") for t in trades):
+        _print_dim("By volatility regime (ATR%, VIX proxy)", _agg(trades, _bucket_atr), sort_by_pnl=True)
     _print_dim("By candle strength", _agg(trades, lambda t: _bucket_candle(t.get("candle_strength"))))
     _print_dim("By half-year period", _agg(trades, lambda t: t["_period"]))
 
