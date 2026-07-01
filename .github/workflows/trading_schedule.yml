@@ -13,6 +13,7 @@ on:
     - cron: '45 20 * * 1-5'   # end-of-day  15:45 ET (EST)
     - cron: '58 13 * * 1-5'   # health check 09:58 ET (EDT) — independent watchdog
     - cron: '58 14 * * 1-5'   # health check 09:58 ET (EST)
+    - cron: '*/30 13-20 * * 1-5'  # intraday risk monitor every 30 min (ET-guarded to 10:00-15:35)
   workflow_dispatch:
     inputs:
       script:
@@ -28,6 +29,9 @@ on:
           - smoke_order
           - cancel_orders
           - health_check
+          - risk_monitor
+          - halt_now
+          - resume_trading
           - abtest
           - driftcheck
           - validate
@@ -64,6 +68,8 @@ env:
   ALPACA_PAPER: 'true'
   ALGO_TICKER: 'SPY'          # single-symbol default (backtest/manual)
   ALGO_TICKERS: 'SPY,QQQ'     # live trading set (execute/pre/EOD loop over these)
+  ALGO_MAX_DAILY_LOSS: '0.03'    # hard daily stop (flatten + halt for the day)
+  ALGO_DAILY_LOSS_WARN: '0.0225' # early-warning email at 3/4 of the hard stop
   DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}  # true only on a manual dry-run dispatch
   GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
   GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
@@ -189,6 +195,49 @@ jobs:
           cache: 'pip'
       - run: pip install -r requirements.txt
       - run: python -m src.health_check
+
+  risk-monitor:
+    # Intraday daily-loss bumper. Warns at 3/4 of the stop, FLATTENS + halts at
+    # the hard stop. ET-guarded inside to 10:00-15:35 so the broad UTC cron only
+    # acts during market hours.
+    if: >
+      (github.event_name == 'schedule' && github.event.schedule == '*/30 13-20 * * 1-5') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.script == 'risk_monitor')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - run: python -m src.risk_monitor
+
+  halt-now:
+    # Manual kill switch ON: sticky halt until resume_trading is run.
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.script == 'halt_now'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - run: python -m src.killswitch halt
+
+  resume-trading:
+    # Manual kill switch OFF: re-authorize trading after a manual halt.
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.script == 'resume_trading'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - run: python -m src.killswitch resume
 
   abtest:
     # Config A/B (baseline vs regime gate vs close-confirmed) + statistical

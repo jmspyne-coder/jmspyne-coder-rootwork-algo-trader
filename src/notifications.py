@@ -243,6 +243,92 @@ def notify_risk_halt(reason):
     )
 
 
+# Direct link to the Actions workflow so a halt email is one tap from re-arming.
+ACTIONS_URL = os.getenv(
+    "GH_ACTIONS_URL",
+    "https://github.com/jmspyne-coder/rootwork-algo-trader/actions/workflows/trading_schedule.yml",
+)
+
+
+def _money(x: float) -> str:
+    return f"${x:,.2f}"
+
+
+def notify_daily_loss_warning(daily_pnl, loss_pct, stop_pct, equity):
+    """Early heads-up when the day's loss crosses the warning line (3/4 of the
+    hard stop). Informational only — nothing is halted or closed."""
+    msg = (f"*DAILY LOSS WARNING* :warning:\n"
+           f"Down {_money(-daily_pnl)} ({loss_pct:.2%}) today. "
+           f"Hard stop at {stop_pct:.2%}. Equity {_money(equity)}.")
+    send_notification(msg, ":warning:")
+    send_email(
+        f"⚠️ Algo Trader: down {loss_pct:.1%} today (warning)",
+        f"""<div style="font-family:sans-serif;padding:20px;background:#1a1a1a;color:#e5e5e5;border-radius:8px;">
+        <h2 style="color:#f59e0b;">⚠️ Approaching the daily stop</h2>
+        <p>Today's loss is <strong>{_money(-daily_pnl)}</strong> ({loss_pct:.2%} of equity).</p>
+        <p>The hard stop is {stop_pct:.2%}. If it is hit, open positions are flattened and
+        no new trades are taken for the rest of the day (trading resumes tomorrow).</p>
+        <p style="color:#a0a0a0;">Equity {_money(equity)}. No action taken yet, this is a heads-up.</p>
+        </div>""",
+    )
+
+
+def notify_daily_stop_flattened(daily_pnl, loss_pct, stop_pct, equity, positions_closed):
+    """Loud alert when the hard daily-loss stop trips and positions are flattened.
+    Auto-resumes the next trading day."""
+    msg = (f"*DAILY STOP HIT* :octagonal_sign:\n"
+           f"Down {_money(-daily_pnl)} ({loss_pct:.2%}) >= {stop_pct:.2%} stop. "
+           f"Flattened {positions_closed} position(s). Halted for the day; resumes tomorrow.")
+    send_notification(msg, ":rotating_light:")
+    send_email(
+        f"⛔ Algo Trader DAILY STOP — down {loss_pct:.1%}, positions flattened",
+        f"""<div style="font-family:sans-serif;padding:20px;background:#1a1a1a;color:#e5e5e5;border-radius:8px;">
+        <h2 style="color:#ef4444;">⛔ Daily loss stop hit</h2>
+        <p>Today's loss reached <strong>{_money(-daily_pnl)}</strong> ({loss_pct:.2%}),
+        at or past the {stop_pct:.2%} hard stop.</p>
+        <p><strong>Action taken:</strong> cancelled open orders and flattened
+        {positions_closed} position(s). No new trades today.</p>
+        <p>Trading <strong>resumes automatically tomorrow</strong>. To keep it stopped
+        beyond today, hit the manual kill switch:
+        <a href="{ACTIONS_URL}">{ACTIONS_URL}</a> and run <em>halt_now</em>.</p>
+        <p style="color:#a0a0a0;">Equity {_money(equity)}.</p>
+        </div>""",
+    )
+
+
+def notify_manual_halt(equity, actions_url=None):
+    """Confirm an operator-triggered manual halt, with the one-tap resume link."""
+    url = actions_url or ACTIONS_URL
+    send_notification("*MANUAL HALT ENGAGED* :octagonal_sign:\nTrading stays stopped until you resume.",
+                      ":rotating_light:")
+    send_email(
+        "⛔ Algo Trader HALTED manually — resume required",
+        f"""<div style="font-family:sans-serif;padding:20px;background:#1a1a1a;color:#e5e5e5;border-radius:8px;">
+        <h2 style="color:#ef4444;">⛔ Manual halt engaged</h2>
+        <p>You stopped the bot by hand. It will place no trades on any day until you
+        re-authorize it. This does not auto-clear.</p>
+        <p><strong>To resume:</strong> open
+        <a href="{url}">the trading workflow</a>, hit <em>Run workflow</em>, and choose
+        <em>resume_trading</em>.</p>
+        <p style="color:#a0a0a0;">Equity {_money(equity)}.</p>
+        </div>""",
+    )
+
+
+def notify_manual_resume(equity):
+    """Confirm trading was re-authorized after a manual halt."""
+    send_notification("*TRADING RESUMED* :white_check_mark:\nManual halt cleared.", ":white_check_mark:")
+    send_email(
+        "✅ Algo Trader resumed — manual halt cleared",
+        f"""<div style="font-family:sans-serif;padding:20px;background:#1a1a1a;color:#e5e5e5;border-radius:8px;">
+        <h2 style="color:#22c55e;">✅ Trading re-authorized</h2>
+        <p>The manual halt is cleared. Normal risk controls (daily stop, drawdown latch)
+        still apply.</p>
+        <p style="color:#a0a0a0;">Equity {_money(equity)}.</p>
+        </div>""",
+    )
+
+
 def notify_no_signal(ticker, date, reason="No breakout detected"):
     msg = f"*NO TRADE* | `{ticker}` | {date}\n{reason}"
     send_notification(msg, ":zzz:")

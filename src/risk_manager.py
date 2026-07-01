@@ -148,6 +148,13 @@ def load_risk_state(equity: float | None = None, mode: str | None = None) -> Ris
     if cache and cache.get("halt_reason") == "max_drawdown" and bool(cache.get("is_halted")):
         is_halted, halt_reason = True, "max_drawdown"
 
+    # Sticky MANUAL kill switch: an on-demand halt the operator flips by hand
+    # (src/killswitch.py). Like the drawdown latch it persists across days and
+    # does NOT auto-clear — only an explicit resume clears it. This is the
+    # human-in-the-loop stop: nothing trades until the operator re-authorizes.
+    if cache and cache.get("halt_reason") == "manual_kill" and bool(cache.get("is_halted")):
+        is_halted, halt_reason = True, "manual_kill"
+
     return RiskState(
         peak_equity=peak_equity,
         current_equity=eq,

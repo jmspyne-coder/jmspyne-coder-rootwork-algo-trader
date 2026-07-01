@@ -70,11 +70,39 @@ SELECT * FROM algo_risk_state;   -- should exist after any successful run
 |---|---|---|
 | 09:25 | `pre_market` | reset daily risk state, notify |
 | 09:40 | `execute_orb` | detect breakout, place bracket order(s) for SPY + QQQ |
+| 10:00–15:35, every 30 min | `risk_monitor` | daily-loss bumper: warn at 2.25%, flatten + halt at 3% (see §5b) |
 | 15:45 | `end_of_day` | force-close, reconcile per-trade outcomes, log daily summary |
 
 Both EDT and EST cron offsets are scheduled; `src/timeguard.py` makes only the
 correctly-timed run act, so the bot is DST-proof. It trades **once** in the
 morning — it is not a continuous ticker, so mid-day quiet is normal.
+
+## 5b. Daily-loss bumpers and the manual kill switch
+
+Two layers cap how much a single day can hurt, on top of the per-trade bracket
+stops (each trade risks ~1.5%, capped, no leverage).
+
+**Automatic daily-loss bumper** (`src/risk_monitor.py`, runs every 30 min,
+ET-guarded to 10:00–15:35):
+- At **2.25%** down on the day: emails an early warning. No action taken.
+- At **3%** down (the hard stop): cancels open orders, **flattens all
+  positions**, halts for the day, and emails you. Trading **resumes
+  automatically the next day**.
+- Thresholds live in `ALGO_MAX_DAILY_LOSS` (0.03) and `ALGO_DAILY_LOSS_WARN`
+  (0.0225), set in the workflow env and `.env`.
+- Fail-safe: if it cannot establish equity or the day's baseline, it does NOT
+  flatten; it alerts instead.
+
+**Manual kill switch** (`src/killswitch.py`) — the on-demand human stop:
+- To stop everything now and keep it stopped: Actions → **Trading Schedule** →
+  **Run workflow** → `halt_now`. This is sticky; it does NOT auto-clear.
+- To turn trading back on: same menu → `resume_trading`.
+- The halt email contains the direct link back to this workflow.
+- A manual halt only clears via `resume_trading`. It does not override a
+  daily-loss or drawdown halt (those follow their own schedule).
+
+Note: production risk runs on GitHub Actions, which uses the workflow env values
+above (not your local `.env`). Keep the two in sync if you change a threshold.
 
 ## 6. Failure → fix
 
