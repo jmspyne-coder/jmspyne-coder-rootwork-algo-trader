@@ -38,13 +38,50 @@ def from_motherduck(mode):
     from src.trade_logger import get_connection
     con = get_connection()
     rows = con.execute(
-        "SELECT direction, entry_time, trade_pnl, exit_reason, range_pct, atr, "
-        "candle_strength FROM algo_trade_log "
+        "SELECT ticker, trade_date, direction, entry_time, trade_pnl, exit_reason, "
+        "range_pct, atr, candle_strength FROM algo_trade_log "
         "WHERE mode = ? AND trade_pnl IS NOT NULL AND exit_reason <> 'open'",
         [mode],
     ).fetch_df()
     con.close()
-    return rows.to_dict("records")
+    trades = rows.to_dict("records")
+    attach_gaps(trades)  # analysis-time gap size (no live-path/schema change needed)
+    return trades
+
+
+def attach_gaps(trades):
+    """Best-effort: compute each trade's overnight gap (open vs prior close) by
+    fetching daily bars per ticker and joining by trade_date, so the leak-finder
+    can segment live trades by gap size without logging it on the execution path.
+    Silently leaves gaps unset if data/keys are unavailable."""
+    if not trades or not any(t.get("ticker") and t.get("trade_date") for t in trades):
+        return
+    try:
+        from datetime import timedelta
+        import pandas as pd
+        from src.alpaca_client import get_data_client, fetch_daily_bars
+        client = get_data_client()
+        by_ticker = {}
+        for t in trades:
+            by_ticker.setdefault(t.get("ticker"), []).append(str(t["trade_date"])[:10])
+        gap_of = {}
+        for tk, dates in by_ticker.items():
+            if not tk:
+                continue
+            lo = (pd.Timestamp(min(dates)) - timedelta(days=10)).strftime("%Y-%m-%d")
+            hi = (pd.Timestamp(max(dates)) + timedelta(days=1)).strftime("%Y-%m-%d")
+            daily = fetch_daily_bars(tk, lo, hi, client)
+            prev = None
+            for ts, row in daily.iterrows():
+                d = str(ts.date())
+                if prev:
+                    gap_of[(tk, d)] = (float(row["open"]) - prev) / prev
+                prev = float(row["close"])
+        for t in trades:
+            t["_gap"] = abs(gap_of.get((t.get("ticker"), str(t["trade_date"])[:10]), None)
+                            ) if (t.get("ticker"), str(t.get("trade_date"))[:10]) in gap_of else None
+    except Exception as e:
+        print(f"  [leakfinder] gap attach skipped (non-fatal): {e}")
 
 
 # ─── analysis ─────────────────────────────────────────────────────────
@@ -57,6 +94,16 @@ def _bucket_range(pct):
     if pct < 0.006:
         return "b. mid (0.4-0.6%)"
     return "c. wide (>0.6%)"
+
+
+def _bucket_gap(g):
+    if g is None:
+        return "n/a (no daily data)"
+    if g < 0.003:
+        return "a. <0.3%"
+    if g < 0.007:
+        return "b. 0.3-0.7%"
+    return "c. >0.7%"
 
 
 def _bucket_candle(c):
@@ -112,6 +159,8 @@ def analyze(trades):
     _print_dim("By exit reason", _agg(trades, lambda t: t.get("exit_reason", "?")), sort_by_pnl=True)
     _print_dim("By day of week", _agg(trades, lambda t: t["_dow"]), sort_by_pnl=True)
     _print_dim("By opening-range size", _agg(trades, lambda t: _bucket_range(t.get("range_pct"))))
+    if any(t.get("_gap") is not None for t in trades):
+        _print_dim("By gap size at open", _agg(trades, lambda t: _bucket_gap(t.get("_gap"))), sort_by_pnl=True)
     _print_dim("By candle strength", _agg(trades, lambda t: _bucket_candle(t.get("candle_strength"))))
     _print_dim("By half-year period", _agg(trades, lambda t: t["_period"]))
 

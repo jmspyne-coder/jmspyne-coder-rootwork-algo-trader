@@ -311,6 +311,37 @@ def test_gap_out_of_zone_and_filters():
     assert generate_gap_fill_signal(gapup, atr=None, prev_close=100.0) is None
 
 
+# ─── P&L calendar + leak finder (D1/D2) ──────────────────────────────
+def test_pnl_calendar_and_discipline():
+    from src.pnl_calendar import build_calendar, discipline_score
+    cal = build_calendar([
+        {"summary_date": "2026-07-02", "daily_pnl": 100.0},
+        {"summary_date": "2026-07-01", "daily_pnl": -40.0},
+        {"summary_date": "2026-08-03", "daily_pnl": 25.0},
+    ])
+    assert set(cal) == {"2026-07", "2026-08"}
+    jul = cal["2026-07"]
+    assert jul["days"][0]["date"] == "2026-07-01"          # sorted
+    assert jul["days"][1]["cum"] == 60.0                    # running cum -40 -> 60
+    assert jul["total"] == 60.0 and jul["green"] == 1 and jul["red"] == 1
+    assert build_calendar([]) == {}                          # empty-but-valid
+    d = discipline_score([
+        {"exit_reason": "target", "strategy": "orb_v2"},
+        {"exit_reason": "stop", "strategy": "orb_v2"},
+        {"exit_reason": "open", "strategy": "orb_v2"},       # unresolved, ignored
+    ])
+    assert d["resolved"] == 2 and d["disciplined"] == 2 and d["score"] == 1.0
+    assert discipline_score([])["score"] is None
+
+
+def test_leakfinder_gap_bucket():
+    from src.leakfinder import _bucket_gap
+    assert _bucket_gap(0.001) == "a. <0.3%"
+    assert _bucket_gap(0.005) == "b. 0.3-0.7%"
+    assert _bucket_gap(0.012) == "c. >0.7%"
+    assert _bucket_gap(None).startswith("n/a")
+
+
 # ─── live freshness guards ────────────────────────────────────────────
 def test_drop_forming_bar():
     et = pytz.timezone("US/Eastern")
