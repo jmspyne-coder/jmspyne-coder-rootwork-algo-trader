@@ -237,6 +237,68 @@ def test_breakout_confirm_close_vs_wick():
                            breakout_confirm="close") is None          # close inside -> no trade
 
 
+# ─── gap-fill signal + router ─────────────────────────────────────────
+from src.gap_signal import (
+    detect_gap, min_gap_threshold, route_strategy,
+    generate_gap_fill_signal, simulate_gap_fill_trade,
+)
+
+
+def test_detect_gap_and_threshold():
+    assert round(detect_gap(100.0, 100.8), 4) == 0.008
+    assert detect_gap(0, 100) is None
+    # max(0.5*ATR/prevclose, 0.3%) -> ATR component 0.5*1/100 = 0.5% wins over floor
+    assert round(min_gap_threshold(1.0, 100.0, 0.5, 0.003), 4) == 0.005
+    # tiny ATR -> the 0.3% floor governs
+    assert round(min_gap_threshold(0.1, 100.0, 0.5, 0.003), 4) == 0.003
+
+
+def test_route_strategy_three_zones():
+    assert route_strategy(0.02, 0.005, 0.015) == "skip"      # 2% regime event
+    assert route_strategy(0.008, 0.005, 0.015) == "gap_fill" # meaningful gap
+    assert route_strategy(-0.008, 0.005, 0.015) == "gap_fill"# fade works both ways
+    assert route_strategy(0.001, 0.005, 0.015) == "orb"      # normal day
+    assert route_strategy(None, 0.005, 0.015) == "orb"       # no prior close
+
+
+def _gap_session(rows, start="2026-07-01 09:30"):
+    idx = pd.date_range(start=start, periods=len(rows), freq="1min", tz="US/Eastern")
+    return pd.DataFrame(rows, index=idx, columns=["open", "high", "low", "close", "volume"])
+
+
+def test_gap_up_fades_short_and_hits_target():
+    # prev_close 100, open 100.8 (+0.8% gap, in-zone), ATR 1.0 -> short, target 98.8
+    bars = _gap_session([
+        [100.8, 100.9, 100.5, 100.6, 1000],
+        [100.6, 100.7, 99.0, 99.2, 2000],
+        [99.2, 99.3, 98.5, 98.7, 2000],   # low 98.5 <= target 98.8
+    ])
+    sig = generate_gap_fill_signal(bars, atr=1.0, prev_close=100.0)
+    assert sig is not None and sig.direction == "short"
+    assert sig.entry_price == 100.8 and sig.stop_price == 101.8 and sig.target_price == 98.8
+    res = simulate_gap_fill_trade(sig, bars)
+    assert res["exit_reason"] == "target" and round(res["pnl_per_share"], 2) == 2.00
+
+
+def test_gap_down_fades_long():
+    bars = _gap_session([[99.2, 99.4, 99.1, 99.3, 1000]])
+    sig = generate_gap_fill_signal(bars, atr=1.0, prev_close=100.0)  # -0.8% gap
+    assert sig is not None and sig.direction == "long"
+    assert sig.entry_price == 99.2 and sig.stop_price == 98.2 and sig.target_price == 101.2
+
+
+def test_gap_out_of_zone_and_filters():
+    normal = _gap_session([[100.1, 100.2, 100.0, 100.1, 1000]])  # +0.1% -> not gap-fill
+    assert generate_gap_fill_signal(normal, atr=1.0, prev_close=100.0) is None
+    regime = _gap_session([[102.0, 102.1, 101.9, 102.0, 1000]])  # +2% -> skip zone
+    assert generate_gap_fill_signal(regime, atr=1.0, prev_close=100.0) is None
+    gapup = _gap_session([[100.8, 100.9, 100.5, 100.6, 1000]])
+    # direction filter "down" only fades gap-downs, so a gap-up yields nothing
+    assert generate_gap_fill_signal(gapup, atr=1.0, prev_close=100.0, direction_filter="down") is None
+    # ATR required
+    assert generate_gap_fill_signal(gapup, atr=None, prev_close=100.0) is None
+
+
 # ─── live freshness guards ────────────────────────────────────────────
 def test_drop_forming_bar():
     et = pytz.timezone("US/Eastern")

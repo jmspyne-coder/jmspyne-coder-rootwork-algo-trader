@@ -112,6 +112,22 @@ FILTER_REGIME_GAP_MAX_PCT = float(os.getenv("FILTER_REGIME_GAP_MAX", "0.015"))  
 # breakouts, possibly fewer/later entries). A/B before changing live.
 BREAKOUT_CONFIRM = os.getenv("ALGO_BREAKOUT_CONFIRM", "wick").lower()
 
+# ─── Gap-Fill strategy (GAP_FILL v1) ─────────────────────────────────
+# Mean-reversion complement to ORB: fade an overnight gap back toward the prior
+# close. Mutually exclusive with ORB by gap size (see gap_signal.route_strategy):
+#   |gap| >= MAX  -> regime event, neither trades
+#   |gap| >= min  -> gap-fill (min = max(ATR_MULT*ATR/prev_close, MIN_GAP_PCT))
+#   else          -> ORB
+# PENDING BACKTEST: parameters are defaults to sweep, not validated numbers.
+GAP_FILL_MIN_GAP_ATR_MULT = float(os.getenv("ALGO_GAP_MIN_ATR_MULT", "0.5"))
+GAP_FILL_MIN_GAP_PCT = float(os.getenv("ALGO_GAP_MIN_PCT", "0.003"))    # 0.3% floor
+GAP_FILL_MAX_GAP_PCT = float(os.getenv("ALGO_GAP_MAX_PCT", "0.015"))    # 1.5% ceiling
+GAP_FILL_ATR_STOP_MULT = float(os.getenv("ALGO_GAP_ATR_STOP_MULT", "1.0"))
+GAP_FILL_RR_RATIO = float(os.getenv("ALGO_GAP_RR_RATIO", "2.0"))
+GAP_FILL_ENTRY_OFFSET_MIN = int(os.getenv("ALGO_GAP_ENTRY_OFFSET_MIN", "0"))  # 0/1/2 min after open
+GAP_FILL_DIRECTION = os.getenv("ALGO_GAP_DIRECTION", "both").lower()    # both | up | down
+
+
 # ─── Risk Management ─────────────────────────────────────────────────
 # Risk per trade as a fraction of CURRENT equity (live: real Alpaca equity;
 # paper: the simulated equity below). Bounded further by the per-symbol notional
