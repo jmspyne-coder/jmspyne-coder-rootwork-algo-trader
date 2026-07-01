@@ -8,12 +8,12 @@ candidate Gap-Fill. Real data, over 2024-01-01 to 2026-06-01. Method: CSCV
 
 | strategy | configs (>=30 trades) | PBO | degradation slope | mean OOS Sharpe of pick | verdict |
 |---|---|---|---|---|---|
-| **5-minute ORB (shipped)** | 54 | **0.057** | -0.55 | **+1.66** | holds up |
+| **5-minute ORB (shipped)** | 162 | **0.114** | -0.54 | **+1.33** | holds up |
 | Gap-Fill (candidate) | 567 of 729 | 0.429 | -1.12 | -0.19 | overfit, held back |
 
-The direct ORB PBO closes the gap this file previously flagged. ORB PBO of 0.057
-means only a ~6% chance the in-sample-best config underperforms the out-of-sample
-median, and the selected config keeps a positive OOS Sharpe (+1.66 from +2.10 IS).
+The direct ORB PBO closes the gap this file previously flagged. ORB PBO of 0.114
+means only a ~11% chance the in-sample-best config underperforms the out-of-sample
+median, and the selected config keeps a positive OOS Sharpe (+1.33 from +1.98 IS).
 That is a strong, independent complement to the ORB's deflated Sharpe
 (`dsr_sensitivity.csv`) and bootstrap CIs (`block_bootstrap.csv`): three separate
 overfitting lenses now agree the ORB edge is real. Gap-Fill fails the same test
@@ -21,22 +21,23 @@ overfitting lenses now agree the ORB edge is real. Gap-Fill fails the same test
 
 ## ORB CSCV detail (S=8)
 
-Universe: `scripts/orb_pbo_sweep.py` — QQQ, 54 configs (or_minutes x reward-risk x
-ATR-stop-mult x candle on/off), each with its per-config daily return series
-persisted to `validation/orb_sweep_returns.csv`. 475 trading days, 70 splits.
+Universe: `scripts/orb_pbo_sweep.py` — QQQ, 162 configs (or_minutes x reward-risk x
+ATR-stop-mult x min-range x candle on/off), each with its per-config daily return
+series persisted to `validation/orb_sweep_returns.csv`. 575 trading days, 70 splits.
 
 | metric | value | reading |
 |---|---|---|
-| PBO | 0.057 | very low; IS winners generalize |
-| Median logit(lambda) | +2.10 | positive: IS-best ranks high OOS |
-| Degradation slope | -0.55 | mildly negative but PBO stays low |
-| P(OOS Sharpe of pick < 0) | 0.043 | winner is almost never an OOS loser |
-| Mean IS / OOS Sharpe of pick | 2.10 / 1.66 | ~79% of edge retained OOS |
+| PBO | 0.114 | low; IS winners generalize |
+| Median logit(lambda) | +2.29 | positive: IS-best ranks high OOS |
+| Degradation slope | -0.54 | mildly negative but PBO stays low |
+| P(OOS Sharpe of pick < 0) | 0.086 | winner is rarely an OOS loser |
+| Mean IS / OOS Sharpe of pick | 1.98 / 1.33 | ~67% of edge retained OOS |
 
-Caveat: 54 configs is a smaller universe than the gap sweep's 729, so the ORB PBO
-is directional rather than exhaustive; it deliberately includes the known-losing
-15/30-minute windows so the selection test is honest. The signal is clear
-regardless of that, and stable with the other two overfitting measures.
+The universe was widened from an initial 54 configs to 162 (adding the min-range
+dimension); PBO rose only modestly (0.057 -> 0.114) and stayed low, which is the
+robust reading — the result is not an artifact of a thin config space. It
+deliberately includes the known-losing 15/30-minute windows so the selection test
+is honest, and it agrees with the other two overfitting measures.
 
 ## Gap-Fill CSCV detail (S = 8, as specified)
 

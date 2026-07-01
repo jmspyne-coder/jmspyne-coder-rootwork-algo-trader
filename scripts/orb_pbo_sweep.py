@@ -35,6 +35,7 @@ GRID = {
     "or_minutes": [5, 15, 30],
     "rr_ratio": [1.5, 2.0, 3.0],
     "atr_mult": [1.0, 1.5, 2.0],
+    "min_range": [0.002, 0.003, 0.004],
     "candle": [False, True],
 }
 
@@ -66,7 +67,7 @@ def run_one(groups, atr_by_day, cfg):
         for d, db in groups.items():
             sig = generate_signal(
                 db, atr=atr_by_day[d], or_minutes=cfg["or_minutes"], rr_ratio=cfg["rr_ratio"],
-                stop_mode="atr", min_range_pct=0.003,
+                stop_mode="atr", min_range_pct=cfg["min_range"],
                 filter_vwap=False, filter_rvol=False,
                 filter_candle=cfg["candle"], candle_pct=0.5,
                 entry_cutoff=cutoff,
