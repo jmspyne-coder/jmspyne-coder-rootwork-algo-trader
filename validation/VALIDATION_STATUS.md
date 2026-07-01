@@ -77,6 +77,16 @@ python scripts/cscv.py --segments 8
 - `config/settings.py`, `src/orb_signal.py`, `src/risk_manager.py`,
   `src/backtest.py` — parameters, signal, risk, performance (all questions).
 
+## Exploratory (D-series, runnable-now items done)
+
+- `validation/tqqq_sqqq_investigation.md` (D3): the ORB config on the 3x ETFs is
+  negative gross (TQQQ Sharpe -3.92, SQQQ -3.42) and produces fewer signals — the
+  edge does not transfer; 3x route closed. `scripts/tqqq_sqqq_investigation.py`.
+- `docs/limit_entry_design.md` (D4): limit-entry variant designed (not built);
+  decision deferred to the paper period's realized-slippage read.
+- Still genuinely deferred (need live P&L that does not exist yet): leak-finder
+  dashboard (D1), P&L calendar (D2), withdrawal auto-sweep (D6).
+
 The four questions for the reviewer are in `REVIEWER_BRIEF.md` Section 9:
 1. Is the edge real, or small-sample noise?
 2. Would you redo the deflated-Sharpe trial count (est. 18) or the IID bootstrap?
