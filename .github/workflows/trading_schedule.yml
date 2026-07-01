@@ -75,6 +75,10 @@ env:
   ALGO_MAX_CONSEC_LOSSES: '5'    # consecutive losing days before a pause
   ALGO_CONSEC_PAUSE_DAYS: '2'    # trading-day pause after a consec-loss halt (auto-resume)
   ALGO_MAX_DRAWDOWN: '0.10'      # peak-to-current drawdown: STICKY halt (manual resume)
+  ALGO_RISK_PER_TRADE: '0.03'    # 3% of current (paper: simulated) equity
+  ALGO_LIVE_CAPITAL: '5000'      # reference; live sizing pulls actual equity
+  ALGO_PAPER_SIM_EQUITY: '5000'  # paper sizes off this, not the ~$100k paper balance
+  ALGO_PAPER_BASELINE: '100000'  # paper account starting balance
   DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}  # true only on a manual dry-run dispatch
   GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
   GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}

@@ -23,8 +23,8 @@ from src.notifications import notify_manual_halt, notify_manual_resume, send_not
 
 def _equity_or_none():
     try:
-        from src.alpaca_client import get_account_equity
-        return get_account_equity()
+        from src.alpaca_client import get_effective_equity
+        return get_effective_equity()
     except Exception as e:
         print(f"  [killswitch] could not fetch equity ({e}).")
         return None

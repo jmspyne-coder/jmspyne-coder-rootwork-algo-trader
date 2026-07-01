@@ -17,7 +17,7 @@ from datetime import datetime
 import pytz
 
 from src.alpaca_client import (
-    get_trading_client, get_account_equity,
+    get_trading_client, get_effective_equity,
     get_open_positions, close_all_positions, get_market_session_today,
 )
 from src.risk_manager import load_risk_state, save_risk_state
@@ -107,9 +107,10 @@ def main():
                else "Second close cleared it; verify the account."),
             ":rotating_light:")
 
-    # 2. Final equity.
+    # 2. Final equity (effective: simulated in paper, real in live — the same
+    # scale used for sizing and the risk state, so the summary/drawdown match).
     try:
-        equity = get_account_equity(trading_client)
+        equity = get_effective_equity(trading_client, mode)
     except Exception as e:
         print(f"  ERROR fetching equity: {e}")
         send_notification(f"*EOD ERROR* could not fetch equity: {e}", ":rotating_light:")

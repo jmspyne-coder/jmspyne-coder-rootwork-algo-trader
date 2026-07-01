@@ -11,7 +11,7 @@ from datetime import datetime
 import pytz
 
 from src.alpaca_client import (
-    get_trading_client, get_account_equity, fetch_daily_bars, get_data_client,
+    get_trading_client, get_effective_equity, fetch_daily_bars, get_data_client,
     get_market_session_today,
 )
 from src.orb_signal import calculate_atr
@@ -28,11 +28,12 @@ def main():
     from src.timeguard import ensure_et_window
     ensure_et_window("09:15", "09:59", "PRE-MARKET")  # intended 09:25 ET
 
-    # 1. Get current equity
+    # 1. Get current equity (effective: simulated in paper, real in live — the
+    # same scale execute/EOD use, so the daily baseline written here is correct).
     try:
         trading_client = get_trading_client()
-        equity = get_account_equity(trading_client)
-        print(f"  Account equity: ${equity:,.2f}")
+        equity = get_effective_equity(trading_client)
+        print(f"  Account equity (effective): ${equity:,.2f}")
     except Exception as e:
         print(f"  ERROR fetching account: {e}")
         sys.exit(1)

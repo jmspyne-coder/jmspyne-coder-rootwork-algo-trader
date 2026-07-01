@@ -21,7 +21,7 @@ import pytz
 from config import settings
 from src.notifications import notify_health_alarm
 from src.alpaca_client import (
-    get_trading_client, get_account_equity, get_market_session_today,
+    get_trading_client, get_effective_equity, get_market_session_today,
 )
 from src.trade_logger import get_run_today, get_prior_equity_end
 
@@ -47,9 +47,9 @@ def main():
         print("  Market closed today — health check skipped (all clear).")
         sys.exit(0)
 
-    # 2. Account reachable + equity sane.
+    # 2. Account reachable + equity sane (effective scale, matches prior close).
     try:
-        equity = get_account_equity(client)
+        equity = get_effective_equity(client, mode)
     except Exception as e:
         notify_health_alarm("CRITICAL", "Account equity unreadable",
                             f"Could not read account equity at {hhmm} ET: {e}.")

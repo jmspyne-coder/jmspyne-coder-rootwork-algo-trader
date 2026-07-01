@@ -61,7 +61,7 @@ def main():
     ensure_et_window("10:00", "15:35", "RISK MONITOR")  # scheduled-run DST guard
 
     from src.alpaca_client import (
-        get_trading_client, get_account_equity, get_open_positions,
+        get_trading_client, get_effective_equity, get_open_positions,
         close_all_positions, cancel_all_orders, get_market_session_today,
     )
     from src.risk_manager import load_risk_state, save_risk_state
@@ -102,7 +102,7 @@ def main():
 
     # Equity + baseline. Fail SAFE on any uncertainty: alert, do not flatten.
     try:
-        equity = get_account_equity(trading_client)
+        equity = get_effective_equity(trading_client, mode)
     except Exception as e:
         print(f"  ERROR fetching equity: {e}")
         send_notification(f"*RISK MONITOR* could not fetch equity: {e}", ":rotating_light:")

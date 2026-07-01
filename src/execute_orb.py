@@ -22,7 +22,7 @@ import pytz
 from src.alpaca_client import (
     get_data_client, get_trading_client,
     fetch_intraday_bars, fetch_daily_bars,
-    get_account_equity, submit_bracket_order, verify_bracket_legs,
+    get_account_equity, get_effective_equity, submit_bracket_order, verify_bracket_legs,
     has_order_today, count_todays_orders, get_market_session_today,
 )
 from src.orb_signal import generate_signal, calculate_atr
@@ -249,9 +249,11 @@ def main():
         heartbeat("skipped_halfday", f"half-day close {session['close']}")
         sys.exit(0)
 
-    # Equity + account-level risk pre-check.
+    # Equity + account-level risk pre-check. In paper mode this is the SIMULATED
+    # equity (sized to the real plan, not the ~$100K paper balance); in live mode
+    # it is the real account equity. All sizing/risk below runs on this figure.
     try:
-        equity = get_account_equity(trading_client)
+        equity = get_effective_equity(trading_client)
     except Exception as e:
         print(f"  ERROR fetching equity: {e}")
         send_notification(f"*EXECUTE ERROR* could not fetch account equity: {e}", ":rotating_light:")

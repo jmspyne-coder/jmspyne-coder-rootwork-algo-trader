@@ -113,7 +113,11 @@ FILTER_REGIME_GAP_MAX_PCT = float(os.getenv("FILTER_REGIME_GAP_MAX", "0.015"))  
 BREAKOUT_CONFIRM = os.getenv("ALGO_BREAKOUT_CONFIRM", "wick").lower()
 
 # ─── Risk Management ─────────────────────────────────────────────────
-RISK_PER_TRADE_PCT = float(os.getenv("ALGO_RISK_PER_TRADE", "0.015"))  # 1.5%
+# Risk per trade as a fraction of CURRENT equity (live: real Alpaca equity;
+# paper: the simulated equity below). Bounded further by the per-symbol notional
+# cap (equity / N symbols, no leverage), which is the binding constraint for
+# liquid ETFs, so realized risk is usually below this figure.
+RISK_PER_TRADE_PCT = float(os.getenv("ALGO_RISK_PER_TRADE", "0.03"))  # 3%
 # Hard daily-loss stop. At/above this loss the day is halted: execute_orb takes
 # no new entries, and the intraday risk_monitor FLATTENS open positions. Auto-
 # resumes the next trading day. 3% is roughly one full bad day (both stops hit).
@@ -135,18 +139,20 @@ MAX_CONSECUTIVE_LOSSES = int(os.getenv("ALGO_MAX_CONSEC_LOSSES", "5"))
 CONSEC_LOSS_PAUSE_DAYS = int(os.getenv("ALGO_CONSEC_PAUSE_DAYS", "2"))
 # Max peak-to-current drawdown. Sticky latch: stops all trading and requires a
 # manual resume (killswitch resume) — the "don't lose my ass" backstop. At
-# $2,000 starting capital, 10% is a $200 max loss before the system stops itself.
+# $5,000 starting capital, 10% is a $500 max loss before the system stops itself.
+# It scales with equity (always 10% of peak), so deposits/compounding move it.
 MAX_DRAWDOWN_PCT = float(os.getenv("ALGO_MAX_DRAWDOWN", "0.10"))       # 10%
 MAX_TRADES_PER_DAY = int(os.getenv("ALGO_MAX_TRADES_DAY", "2"))
 
 # ─── Live account ────────────────────────────────────────────────────
 # Live position sizing pulls CURRENT account equity from Alpaca each morning
 # (src/execute_orb) and compounds; nothing here is hardcoded into live sizing.
-# This is a reference for docs/sizing only. Margin account, $2,000 start
-# (post-PDT-elimination, 2026-06-04). Orders are WHOLE-share brackets: Alpaca
-# does NOT support stop/target legs on fractional-share orders, so fractional
-# sizing is intentionally OFF (a bracket needs whole shares).
-LIVE_STARTING_CAPITAL = float(os.getenv("ALGO_LIVE_CAPITAL", "2000"))
+# Deposits and withdrawals need NO code change — the system risks 3% of whatever
+# balance is present that day. This is a reference for docs only. Margin account,
+# $5,000 start (post-PDT-elimination, 2026-06-04). Orders are WHOLE-share
+# brackets: Alpaca does NOT support stop/target legs on fractional-share orders,
+# so fractional sizing is intentionally OFF (a bracket needs whole shares).
+LIVE_STARTING_CAPITAL = float(os.getenv("ALGO_LIVE_CAPITAL", "5000"))
 FRACTIONAL_SHARES = False  # incompatible with bracket orders on Alpaca; see docs
 
 # ─── Paper-trading tracker (C4) ──────────────────────────────────────
@@ -156,6 +162,18 @@ FRACTIONAL_SHARES = False  # incompatible with bracket orders on Alpaca; see doc
 PAPER_TRADING_START = os.getenv("ALGO_PAPER_START", "")  # e.g. "2026-07-01"
 PAPER_TRADING_DAYS = int(os.getenv("ALGO_PAPER_DAYS", "60"))
 PAPER_BACKTEST_SHARPE_REF = float(os.getenv("ALGO_PAPER_BT_SHARPE", "3.81"))  # QQQ net@3bps
+
+# ─── Simulated paper equity (C4) ─────────────────────────────────────
+# Alpaca paper accounts are pre-funded (~$100K). Sizing off that balance would
+# produce positions ~20x the real plan. So in PAPER mode the system sizes off a
+# SIMULATED equity that starts at PAPER_SIMULATED_EQUITY and compounds with real
+# paper P&L, computed as: simulated_start + (real_paper_equity - PAPER_ACCOUNT_
+# BASELINE). All risk math (sizing, drawdown, daily stop) runs on this scale, so
+# the kill switch is testable in paper. In LIVE mode this is ignored and real
+# equity is used. If the paper account's starting balance is not ~$100K, set
+# ALGO_PAPER_BASELINE to match it.
+PAPER_SIMULATED_EQUITY = float(os.getenv("ALGO_PAPER_SIM_EQUITY", "5000"))
+PAPER_ACCOUNT_BASELINE = float(os.getenv("ALGO_PAPER_BASELINE", "100000"))
 
 # ─── Schedule (ET) ───────────────────────────────────────────────────
 MARKET_OPEN = "09:30"

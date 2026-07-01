@@ -100,7 +100,7 @@ ORB as a class shows continued profitability through 2024 to 2026 across indepen
 
 ## 9. The four questions for you
 
-> **Q1, Is the edge real?** 166 QQQ trades, deflated Sharpe retains ~90% of gross and >70% even at 100 trials. 46 SPY trades, higher raw Sharpe but below the credibility floor and failing the haircut. An independent clone confirms the edge. Enough to risk $2,000, or do you want more history?
+> **Q1, Is the edge real?** 166 QQQ trades, deflated Sharpe retains ~90% of gross and >70% even at 100 trials. 46 SPY trades, higher raw Sharpe but below the credibility floor and failing the haircut. An independent clone confirms the edge. Enough to risk $5,000, or do you want more history?
 >
 > **Q2, Stats shortcuts.** Deflated Sharpe trial count is estimated at 18 (sensitivity in Section 4); the bootstrap is IID with lag-1 autocorrelation of 0.10 (SPY) / 0.06 (QQQ). Would you redo either, and with what?
 >

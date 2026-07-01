@@ -149,6 +149,27 @@ def get_account_equity(trading_client: TradingClient | None = None) -> float:
     return float(account.equity)
 
 
+def to_effective_equity(real_equity: float, mode: str) -> float:
+    """Map real account equity to the equity the risk math should use.
+
+    LIVE: the real balance (deposits/withdrawals/compounding flow through).
+    PAPER: a simulated balance so a pre-funded ~$100K paper account is sized as
+    the real plan. simulated_start + (real_paper_equity - paper_baseline), which
+    compounds with real paper P&L. All sizing/drawdown/daily-stop math runs on
+    this scale so the kill switch is testable in paper. Pure and unit-tested."""
+    if mode == "paper":
+        return settings.PAPER_SIMULATED_EQUITY + (real_equity - settings.PAPER_ACCOUNT_BASELINE)
+    return real_equity
+
+
+def get_effective_equity(trading_client: TradingClient | None = None,
+                         mode: str | None = None) -> float:
+    """Live effective equity: real Alpaca equity mapped through
+    to_effective_equity for the current mode (paper vs live)."""
+    m = mode or ("paper" if settings.ALPACA_PAPER else "live")
+    return to_effective_equity(get_account_equity(trading_client), m)
+
+
 def get_buying_power(trading_client: TradingClient | None = None) -> float:
     client = trading_client or get_trading_client()
     account = client.get_account()

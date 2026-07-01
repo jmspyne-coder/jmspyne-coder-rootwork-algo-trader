@@ -14,7 +14,7 @@ from src.risk_manager import (
     compute_history_state, can_trade, calculate_position_size, RiskState,
     consec_loss_pause_active,
 )
-from src.alpaca_client import verify_bracket_legs
+from src.alpaca_client import verify_bracket_legs, to_effective_equity
 from src.orb_signal import compute_opening_range, generate_signal
 from src.execute_orb import _age_min, _drop_forming_bar
 
@@ -121,6 +121,16 @@ def test_consec_loss_pause_active_window():
     assert consec_loss_pause_active(hist2, pause_days=2) is False
     assert consec_loss_pause_active([], pause_days=2) is False
     assert consec_loss_pause_active(hist, pause_days=0) is False
+
+
+# ─── simulated paper equity ──────────────────────────────────────────
+def test_to_effective_equity():
+    # Live: real equity passes through unchanged.
+    assert to_effective_equity(4823.0, "live") == 4823.0
+    # Paper: pre-funded ~$100k maps to the $5k simulated start and compounds.
+    assert to_effective_equity(100000.0, "paper") == 5000.0
+    assert to_effective_equity(100500.0, "paper") == 5500.0   # +$500 paper P&L
+    assert to_effective_equity(99000.0, "paper") == 4000.0     # -$1000 paper P&L
 
 
 # ─── orphaned-leg guard ──────────────────────────────────────────────
