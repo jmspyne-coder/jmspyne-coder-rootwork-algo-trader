@@ -382,6 +382,31 @@ def notify_manual_resume(equity):
     )
 
 
+def notify_open_outcome(date, outcome, detail, equity):
+    """Email the morning result right after execute runs, so the open is known at
+    ~09:40 instead of waiting for the EOD summary. Best-effort."""
+    label = {
+        "entered": ("📈", "#22c55e", "Trade ENTERED"),
+        "no_signal": ("😴", "#a0a0a0", "No trade — no qualifying breakout"),
+        "no_data": ("⚠️", "#f59e0b", "No trade — data issue"),
+        "skipped_stale": ("⚠️", "#f59e0b", "No trade — late/stale run skipped"),
+        "halted": ("⛔", "#ef4444", "HALTED — no trade"),
+        "error": ("🚨", "#ef4444", "ERROR at the open"),
+        "dry_run": ("🧪", "#a0a0a0", "Dry run (no order)"),
+    }.get(outcome, ("•", "#a0a0a0", outcome))
+    emoji, color, title = label
+    send_email(
+        f"{emoji} Open {date}: {title}",
+        f"""<div style="font-family:sans-serif;padding:20px;background:#1a1a1a;color:#e5e5e5;border-radius:8px;">
+        <h2 style="color:{color};">{emoji} {title}</h2>
+        <p><strong>{date}</strong> · effective equity ${equity:,.2f}</p>
+        <p style="color:#a0a0a0;">{detail or ''}</p>
+        <p style="color:#666;font-size:11px;">Open outcome · full detail in the 3:45 PM summary</p>
+        </div>""",
+    )
+    send_notification(f"*OPEN {date}* {title} — {detail or ''}", emoji)
+
+
 def notify_no_signal(ticker, date, reason="No breakout detected"):
     msg = f"*NO TRADE* | `{ticker}` | {date}\n{reason}"
     send_notification(msg, ":zzz:")

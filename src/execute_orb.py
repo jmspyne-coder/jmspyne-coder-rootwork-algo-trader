@@ -32,6 +32,7 @@ from src.risk_manager import (
 from src.trade_logger import log_trade, init_tables, log_run
 from src.notifications import (
     notify_trade_entry, notify_no_signal, notify_risk_halt, send_notification,
+    notify_open_outcome,
 )
 from config import settings
 
@@ -330,6 +331,14 @@ def main():
         for tk, r in results
     )
     heartbeat(outcome, detail)
+    # Proactive open-outcome email so the morning result is known at ~09:40, not
+    # only at the 15:45 summary. Best-effort; never affects the trade. Suppressed
+    # on a dry run (that path returns earlier only for orders, not this summary).
+    if not settings.DRY_RUN:
+        try:
+            notify_open_outcome(str(today), outcome, detail, equity)
+        except Exception as e:
+            print(f"  [open-email] non-fatal: {e}")
     print(f"  Done — {placed} order(s) placed across {len(tickers)} symbol(s). [{outcome}]")
 
 
